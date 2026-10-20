@@ -55,6 +55,65 @@ export function parseFloor(
   return floor;
 }
 
+// ---- カスタムの間取り（テストプレイ用．開始画面で作る） ----
+
+/** カスタムの間取りの中身（parseFloor と同じ書き方の行と，目盛り） */
+export interface FloorSpec { rows: string[]; rowValues?: number[]; colValues?: number[] }
+
+export const CUSTOM_LIMITS = { minSize: 2, maxSize: 8, maxValue: 9, maxLock: 40 };
+
+/** 送られてきたカスタムの間取りを確かめて Floor にする．おかしければ理由を投げる */
+export function floorFromSpec(spec: unknown): Floor {
+  const { minSize, maxSize, maxValue, maxLock } = CUSTOM_LIMITS;
+  const sp = spec as FloorSpec;
+  if (!sp || !Array.isArray(sp.rows) || sp.rows.some(r => typeof r !== 'string')) throw new Error('間取りの形式が正しくありません');
+  const grid = sp.rows.map(r => r.trim().split(/\s+/));
+  const rows = grid.length, cols = grid[0]?.length ?? 0;
+  if (rows < minSize || rows > maxSize || cols < minSize || cols > maxSize) {
+    throw new Error(`間取りの大きさは${minSize}〜${maxSize}行・${minSize}〜${maxSize}列にしてください`);
+  }
+  let goals = 0;
+  grid.forEach((row, r) => row.forEach((tok, c) => {
+    const lock = tok.match(/^G?(\d+)$/);
+    if (lock && (Number(lock[1]) < 1 || Number(lock[1]) > maxLock)) throw new Error(`段ボールの枚数は1〜${maxLock}にしてください`);
+    if (tok.startsWith('G')) goals++;
+    if (tok === 'S' && (r !== 0 || c !== 0)) throw new Error('スタートは左上だけです');
+  }));
+  if (goals > 1) throw new Error('ゴミ捨て場は1つまでです');
+  const checkScale = (v: number[] | undefined, n: number, what: string) => {
+    if (v === undefined) return;
+    if (!Array.isArray(v) || v.length !== n || v.some(x => !Number.isInteger(x) || x < 0 || x > maxValue)) {
+      throw new Error(`${what}の目盛りは0〜${maxValue}の整数を${n}個にしてください`);
+    }
+  };
+  checkScale(sp.rowValues, rows, '捨欲');
+  checkScale(sp.colValues, cols, '物欲');
+  const floor = parseFloor('custom', 'カスタム', sp.rows, { rowValues: sp.rowValues, colValues: sp.colValues });
+  // ゴミ捨て場を置かなければ，捨欲が無制限になるマスはない
+  if (goals === 0) floor.goal = '';
+  if (floor.walls.includes('0,1') || floor.locks['0,1'] !== undefined) throw new Error('スタートの右のマスは置けるマスにしてください');
+  return floor;
+}
+
+/** 間取りを FloorSpec に戻す（既存の間取りをもとにカスタムを作るとき） */
+export function floorToSpec(f: Floor): FloorSpec {
+  const rows: string[] = [];
+  for (let r = 0; r < f.rows; r++) {
+    const row: string[] = [];
+    for (let c = 0; c < f.cols; c++) {
+      const k = `${r},${c}`;
+      const lock = f.locks[k];
+      row.push(r === 0 && c === 0 ? 'S' : f.walls.includes(k) ? '#' : k === f.goal ? `G${lock ?? ''}` : lock !== undefined ? String(lock) : '.');
+    }
+    rows.push(row.join(' '));
+  }
+  return {
+    rows,
+    rowValues: Array.from({ length: f.rows }, (_, r) => rowValue(f, r)),
+    colValues: Array.from({ length: f.cols }, (_, c) => colValue(f, c)),
+  };
+}
+
 export type CellState = 'open' | 'wall' | 'locked';
 
 export function cellState(floor: Floor, key: string, removed: number): CellState {

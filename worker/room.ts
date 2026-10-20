@@ -4,7 +4,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { GameState, RuleError, applyAction, newGame, viewFor } from '../src/engine/game';
 import { randomSeed } from '../src/engine/rng';
-import { FLOORS } from '../src/engine/floors';
+import { FLOORS, FloorSpec, floorFromSpec } from '../src/engine/floors';
 import { CardKind, marketFromPick } from '../src/engine/cards';
 import { BOT_LABELS } from '../src/bot/bot';
 import { playBotTurn } from '../src/bot/runner';
@@ -12,7 +12,7 @@ import { ClientMsg, MAX_SEATS, RoomInfo, ServerMsg } from '../src/net/protocol';
 import type { Env } from './index';
 
 interface Seat { name: string; token?: string; isBot: boolean; botType?: string }
-interface RoomData { code: string; hostToken?: string; seats: Seat[]; game: GameState | null; floor?: string; market?: CardKind[] }
+interface RoomData { code: string; hostToken?: string; seats: Seat[]; game: GameState | null; floor?: string; market?: CardKind[]; custom?: FloorSpec }
 interface Attachment { token: string }
 
 const BOT_DELAY_MS = 700;
@@ -99,10 +99,16 @@ export class Room extends DurableObject<Env> {
           if (msg.t === 'start' && data.game) throw new RuleError('すでに始まっています');
           if (data.seats.length < 2) throw new RuleError('2人以上（ボット含む）必要です');
           if (msg.t === 'start' && msg.floor && FLOORS[msg.floor]) data.floor = msg.floor;
+          if (msg.t === 'start') {
+            if (msg.custom) {
+              try { floorFromSpec(msg.custom); } catch (e) { throw new RuleError((e as Error).message); }
+            }
+            data.custom = msg.custom;
+          }
           if (msg.t === 'start' && msg.market) {
             try { data.market = marketFromPick(msg.market); } catch (e) { throw new RuleError((e as Error).message); }
           }
-          data.game = newGame(data.seats.map(s => ({ name: s.name, isBot: s.isBot, botType: s.botType })), randomSeed(), { floor: data.floor, market: data.market });
+          data.game = newGame(data.seats.map(s => ({ name: s.name, isBot: s.isBot, botType: s.botType })), randomSeed(), { floor: data.floor, market: data.market, custom: data.custom });
           break;
         }
         case 'action': {

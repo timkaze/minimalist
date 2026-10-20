@@ -3,7 +3,9 @@ import {
   CARDS, CardKind, MARKET_CANDIDATES, MARKET_KINDS, MARKET_PICK, PROTOTYPE_KINDS, RULE, STARTING_DECK, UNLIMITED, marketFromPick, removeCost,
 } from '../engine/cards';
 import { Card, CardPlace, GameView, OwnedCard, PlayerSetup, computeReach, openCells, posKey } from '../engine/game';
-import { FLOORS, RECOMMENDED_FLOORS, cellState, colValue, rowValue } from '../engine/floors';
+import {
+  CUSTOM_LIMITS, DEFAULT_FLOOR, FLOORS, FloorSpec, RECOMMENDED_FLOORS, cellState, colValue, floorFromSpec, floorToSpec, rowValue,
+} from '../engine/floors';
 import { BOT_LABELS } from '../bot/bot';
 import { MAX_SEATS } from '../net/protocol';
 import { cardHelp, cardSVG } from './cardsvg';
@@ -99,6 +101,7 @@ function renderHome() {
   botCount.onchange = syncRows;
   syncRows();
   const pickLocal = wireMarketPicker('marketLocal', '#playLocal');
+  const customLocal = wireFloorPicker('floorLocal', '#playLocal');
   const getName = () => {
     const v = app.querySelector<HTMLInputElement>('#name')!.value.trim() || 'プレイヤー';
     store.set('minimalist.name', v);
@@ -112,7 +115,8 @@ function renderHome() {
       const t = app.querySelector<HTMLSelectElement>(`[data-bot-type="${i}"]`)!.value;
       setup.push({ name: `ボット${i}（${BOT_LABELS[t]}）`, isBot: true, botType: t });
     }
-    startController(new LocalController(setup, app.querySelector<HTMLSelectElement>('#floorLocal')!.value, marketFromPick(pickLocal())));
+    const floor = app.querySelector<HTMLSelectElement>('#floorLocal')!.value;
+    startController(new LocalController(setup, floor === CUSTOM ? undefined : floor, marketFromPick(pickLocal()), customLocal()));
   };
   const goOnline = (code: string) => {
     code = code.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -128,10 +132,159 @@ function renderHome() {
     goOnline(app.querySelector<HTMLInputElement>('#roomCode')!.value);
 }
 
+/** 開始ボタン：人数不足（blocked）・市場の種類数・カスタム間取りのどれかに問題があれば押せない */
+function syncStartButton(btn: HTMLButtonElement) {
+  btn.disabled = btn.dataset.blocked === '1' || btn.dataset.marketBad === '1' || btn.dataset.customBad === '1';
+}
+
 function floorSelect(id: string): string {
   const saved = store.get('minimalist.floor');
   return `<select id="${id}">${RECOMMENDED_FLOORS.map(name => FLOORS[name]).map(f =>
-    `<option value="${f.name}" ${f.name === saved ? 'selected' : ''}>${f.label}</option>`).join('')}</select>`;
+    `<option value="${f.name}" ${f.name === saved ? 'selected' : ''}>${f.label}</option>`).join('')}
+    <option value="${CUSTOM}" ${saved === CUSTOM ? 'selected' : ''}>カスタム（自分で作る）</option></select>
+    <div class="custom-map" id="${id}Custom" hidden></div>`;
+}
+
+// ---- カスタムの間取り（テストプレイ用：大きさ・柱・段ボール・ゴミ捨て場・目盛りを自由に決める） ----
+
+const CUSTOM = 'custom';
+type Tool = 'open' | 'wall' | 'lock' | 'goal';
+const editor = { spec: loadCustom(), tool: 'wall' as Tool, lock: 4 };
+
+function loadCustom(): FloorSpec {
+  try {
+    const v = JSON.parse(store.get('minimalist.custom') ?? 'null') as FloorSpec;
+    if (v) { floorFromSpec(v); return v; }
+  } catch { /* 保存がない・壊れている */ }
+  return floorToSpec(FLOORS[DEFAULT_FLOOR]);
+}
+
+const specGrid = (sp: FloorSpec) => sp.rows.map(r => r.trim().split(/\s+/));
+const scaleOf = (v: number[] | undefined, n: number) => Array.from({ length: n }, (_, i) => v?.[i] ?? Math.min(i, CUSTOM_LIMITS.maxValue));
+
+function customEditorHTML(): string {
+  const sp = editor.spec;
+  const grid = specGrid(sp);
+  const rows = grid.length, cols = grid[0].length;
+  const rv = scaleOf(sp.rowValues, rows), cv = scaleOf(sp.colValues, cols);
+  let err = '';
+  try { floorFromSpec(sp); } catch (e) { err = (e as Error).message; }
+  const { minSize, maxSize, maxValue, maxLock } = CUSTOM_LIMITS;
+  const tool = (t: Tool, label: string) =>
+    `<label class="tool"><input type="radio" name="ctool" value="${t}" ${editor.tool === t ? 'checked' : ''}>${label}</label>`;
+  let cells = `<span class="ce-corner">物欲→<br>捨欲↓</span>`;
+  cells += cv.map((x, c) => `<input class="ce-scale" type="number" min="0" max="${maxValue}" value="${x}" data-col-value="${c}" title="${c}列目まで届いたときの物欲">`).join('');
+  grid.forEach((row, r) => {
+    cells += `<input class="ce-scale" type="number" min="0" max="${maxValue}" value="${rv[r]}" data-row-value="${r}" title="${r}行目まで届いたときの捨欲">`;
+    row.forEach((tok, c) => {
+      const cls = tok === 'S' ? 'start' : tok === '#' ? 'wall' : tok.startsWith('G') ? 'goal' : tok === '.' ? 'open' : 'locked';
+      const label = tok === 'S' ? 'START' : tok === '#' ? '' : tok.startsWith('G') ? 'ゴミ捨て場' : tok === '.' ? '' : `📦${tok}`;
+      cells += `<button type="button" class="ce-cell ${cls}" ${tok === 'S' ? 'disabled' : `data-ce="${r},${c}"`}>${label}</button>`;
+    });
+  });
+  return `
+    <p class="hint">マスを押すと，下で選んだものに変わります．目盛りは，そこまで届いたときの物欲（上）・捨欲（左）の値です．</p>
+    <div class="join">
+      <label>行 <input type="number" id="ceRows" min="${minSize}" max="${maxSize}" value="${rows}"></label>
+      <label>列 <input type="number" id="ceCols" min="${minSize}" max="${maxSize}" value="${cols}"></label>
+    </div>
+    <div class="join tools">
+      ${tool('open', '置ける')}${tool('wall', '柱')}
+      ${tool('lock', '段ボール')}<input type="number" id="ceLock" min="1" max="${maxLock}" value="${editor.lock}" title="この枚数を排除すると置けるようになる">枚
+      ${tool('goal', 'ゴミ捨て場')}
+    </div>
+    <div class="ce-grid" style="--cols:${cols}">${cells}</div>
+    <div class="join">
+      <select id="ceBase">${RECOMMENDED_FLOORS.map(n => `<option value="${n}">${FLOORS[n].label}</option>`).join('')}</select>
+      <button type="button" id="ceLoad">をもとにする</button>
+      <button type="button" id="ceResetScale">目盛りを番号に戻す</button>
+    </div>
+    ${err ? `<p class="ce-error">${esc(err)}</p>` : ''}`;
+}
+
+/** 間取りの選択欄とカスタム編集欄を動かし，カスタムが選ばれていればその中身を返す関数を返す */
+function wireFloorPicker(id: string, startSel: string): () => FloorSpec | undefined {
+  const sel = app.querySelector<HTMLSelectElement>(`#${id}`)!;
+  const box = app.querySelector<HTMLElement>(`#${id}Custom`)!;
+  const draw = () => {
+    const on = sel.value === CUSTOM;
+    box.hidden = !on;
+    let bad = false;
+    if (on) {
+      box.innerHTML = customEditorHTML();
+      try { floorFromSpec(editor.spec); } catch { bad = true; }
+      bindEditor();
+    }
+    const btn = app.querySelector<HTMLButtonElement>(startSel);
+    if (btn) { btn.dataset.customBad = bad ? '1' : ''; syncStartButton(btn); }
+  };
+  const update = (sp: FloorSpec) => {
+    editor.spec = sp;
+    store.set('minimalist.custom', JSON.stringify(sp));
+    draw();
+  };
+  const bindEditor = () => {
+    const grid = specGrid(editor.spec);
+    const rows = grid.length, cols = grid[0].length;
+    const write = (g: string[][], rv = editor.spec.rowValues, cv = editor.spec.colValues) =>
+      update({ rows: g.map(r => r.join(' ')), rowValues: scaleOf(rv, g.length), colValues: scaleOf(cv, g[0].length) });
+    box.querySelectorAll<HTMLInputElement>('input[name=ctool]').forEach(el => {
+      el.onchange = () => { editor.tool = el.value as Tool; };
+    });
+    box.querySelector<HTMLInputElement>('#ceLock')!.onchange = e => {
+      const n = Math.round(Number((e.target as HTMLInputElement).value));
+      editor.lock = Math.max(1, Math.min(CUSTOM_LIMITS.maxLock, n || 1));
+      editor.tool = 'lock';
+      draw();
+    };
+    box.querySelectorAll<HTMLElement>('[data-ce]').forEach(el => {
+      el.onclick = () => {
+        const [r, c] = el.dataset.ce!.split(',').map(Number);
+        const g = grid.map(row => [...row]);
+        if (editor.tool === 'goal') {
+          // ゴミ捨て場は1つだけ：前の場所は置けるマスに戻す．同じマスなら取り消す
+          const was = g[r][c].startsWith('G');
+          g.forEach(row => row.forEach((t, j) => { if (t.startsWith('G')) row[j] = '.'; }));
+          if (!was) g[r][c] = 'G';
+        } else {
+          g[r][c] = editor.tool === 'open' ? '.' : editor.tool === 'wall' ? '#' : String(editor.lock);
+        }
+        write(g);
+      };
+    });
+    const resize = (nr: number, nc: number) => {
+      const { minSize, maxSize } = CUSTOM_LIMITS;
+      nr = Math.max(minSize, Math.min(maxSize, Math.round(nr) || rows));
+      nc = Math.max(minSize, Math.min(maxSize, Math.round(nc) || cols));
+      const g = Array.from({ length: nr }, (_, r) => Array.from({ length: nc }, (_, c) => grid[r]?.[c] ?? '.'));
+      g[0][0] = 'S';
+      write(g);
+    };
+    box.querySelector<HTMLInputElement>('#ceRows')!.onchange = e => resize(Number((e.target as HTMLInputElement).value), cols);
+    box.querySelector<HTMLInputElement>('#ceCols')!.onchange = e => resize(rows, Number((e.target as HTMLInputElement).value));
+    const clampValue = (x: string) => Math.max(0, Math.min(CUSTOM_LIMITS.maxValue, Math.round(Number(x)) || 0));
+    box.querySelectorAll<HTMLInputElement>('[data-row-value]').forEach(el => {
+      el.onchange = () => {
+        const rv = scaleOf(editor.spec.rowValues, rows);
+        rv[Number(el.dataset.rowValue)] = clampValue(el.value);
+        write(grid, rv);
+      };
+    });
+    box.querySelectorAll<HTMLInputElement>('[data-col-value]').forEach(el => {
+      el.onchange = () => {
+        const cv = scaleOf(editor.spec.colValues, cols);
+        cv[Number(el.dataset.colValue)] = clampValue(el.value);
+        write(grid, undefined, cv);
+      };
+    });
+    box.querySelector<HTMLButtonElement>('#ceLoad')!.onclick = () =>
+      update(floorToSpec(FLOORS[box.querySelector<HTMLSelectElement>('#ceBase')!.value]));
+    box.querySelector<HTMLButtonElement>('#ceResetScale')!.onclick = () =>
+      update({ rows: editor.spec.rows, rowValues: scaleOf(undefined, rows), colValues: scaleOf(undefined, cols) });
+  };
+  sel.addEventListener('change', () => { store.set('minimalist.floor', sel.value); draw(); });
+  draw();
+  return () => (sel.value === CUSTOM ? editor.spec : undefined);
 }
 
 // ---- 市場のカードを選ぶ（テストプレイ用．候補から MARKET_PICK 種類） ----
@@ -176,7 +329,7 @@ function wireMarketPicker(id: string, startSel: string): () => CardKind[] {
     root.querySelector('[data-pick-summary]')!.textContent = n === MARKET_PICK ? p.map(k => CARDS[k].name).join('・')
       : n < MARKET_PICK ? `あと${MARKET_PICK - n}種類選んでください` : `${n - MARKET_PICK}種類多すぎます`;
     const btn = app.querySelector<HTMLButtonElement>(startSel);
-    if (btn) btn.disabled = n !== MARKET_PICK || btn.dataset.blocked === '1';
+    if (btn) { btn.dataset.marketBad = n !== MARKET_PICK ? '1' : ''; syncStartButton(btn); }
     store.set('minimalist.market', JSON.stringify(p));
   };
   boxes.forEach(b => { b.onchange = sync; });
@@ -252,10 +405,11 @@ function renderLobby(c: Controller) {
     app.querySelector<HTMLButtonElement>('#addBot')!.onclick = () =>
       c.send!({ t: 'addBot', botType: app.querySelector<HTMLSelectElement>('#botType')!.value });
     const pickOnline = wireMarketPicker('marketOnline', '#start');
+    const customOnline = wireFloorPicker('floorOnline', '#start');
     app.querySelector<HTMLButtonElement>('#start')!.onclick = () => {
       const floor = app.querySelector<HTMLSelectElement>('#floorOnline')!.value;
       store.set('minimalist.floor', floor);
-      c.send!({ t: 'start', floor, market: pickOnline() });
+      c.send!({ t: 'start', floor: floor === CUSTOM ? undefined : floor, market: pickOnline(), custom: customOnline() });
     };
     app.querySelectorAll<HTMLButtonElement>('[data-remove]').forEach(b => {
       b.onclick = () => c.send!({ t: 'removeSeat', seat: Number(b.dataset.remove) });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CARDS, MARKET_KINDS, STARTING_DECK, marketFromPick } from '../src/engine/cards';
-import { FLOORS, RECOMMENDED_FLOORS, parseFloor } from '../src/engine/floors';
+import { FLOORS, RECOMMENDED_FLOORS, floorFromSpec, floorToSpec, parseFloor } from '../src/engine/floors';
 import {
   GameState, RuleError, applyAction, computeReach, newGame, openCells, ownedCount, viewFor,
 } from '../src/engine/game';
@@ -69,6 +69,29 @@ describe('engine', () => {
     expect(computeReach({ '0,1': { id: 1, kind: 'RD' }, '0,2': { id: 2, kind: 'D' }, '2,1': { id: 3, kind: 'X' } }, f))
       .toMatchObject({ buy: 3, remove: 3 });
     expect(() => parseFloor('t', 'テスト', ['S .', '. G'], { rowValues: [0] })).toThrow();
+  });
+
+  it('カスタムの間取り：作れる・おかしな間取りは断る・既存の間取りと行き来できる', () => {
+    const spec = { rows: ['S . 3', '. # .', '. . G'], rowValues: [0, 0, 2], colValues: [0, 2, 3] };
+    const s = newGame([{ name: 'A' }, { name: 'B' }], 3, { custom: spec });
+    expect(s.floor).toMatchObject({ rows: 3, cols: 3, walls: ['1,1'], locks: { '0,2': 3 }, goal: '2,2', rowValues: [0, 0, 2] });
+    // ゴミ捨て場なし：どこにも無制限のマスがない
+    expect(floorFromSpec({ rows: ['S . .', '. . .'] }).goal).toBe('');
+    for (const bad of [
+      { rows: ['S'] },
+      { rows: ['S # .', '. . .'] },
+      { rows: ['S . G', '. . G'] },
+      { rows: ['S . .', '. . S'] },
+      { rows: ['S . .', '. . .'], rowValues: [0, 10] },
+      { rows: ['S . .', '. . .'], colValues: [0, 1] },
+      { rows: ['S . 99', '. . .'] },
+      'nonsense',
+    ]) expect(() => floorFromSpec(bad)).toThrow();
+    for (const name of RECOMMENDED_FLOORS) {
+      const f = floorFromSpec(floorToSpec(FLOORS[name]));
+      expect({ ...f, name: FLOORS[name].name, label: FLOORS[name].label, rowValues: undefined, colValues: undefined })
+        .toEqual({ ...FLOORS[name], rowValues: undefined, colValues: undefined });
+    }
   });
 
   it('既定の間取りはワンルーム', () => {

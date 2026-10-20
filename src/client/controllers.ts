@@ -3,6 +3,7 @@
 import { Action, GameState, GameView, PlayerSetup, RuleError, applyAction, newGame, viewFor } from '../engine/game';
 import { randomSeed } from '../engine/rng';
 import type { CardKind } from '../engine/cards';
+import type { FloorSpec } from '../engine/floors';
 import { playBotTurn } from '../bot/runner';
 import { ClientMsg, RoomInfo, ServerMsg } from '../net/protocol';
 
@@ -27,8 +28,8 @@ export class LocalController implements Controller {
   private errorListeners: ((m: string) => void)[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private setup: PlayerSetup[], private floor?: string, private market?: CardKind[]) {
-    this.state = newGame(setup, randomSeed(), { floor, market });
+  constructor(private setup: PlayerSetup[], private floor?: string, private market?: CardKind[], private custom?: FloorSpec) {
+    this.state = newGame(setup, randomSeed(), { floor, market, custom });
     this.refresh();
   }
 
@@ -44,7 +45,7 @@ export class LocalController implements Controller {
 
   restart(): void {
     if (this.timer) clearTimeout(this.timer);
-    this.state = newGame(this.setup, randomSeed(), { floor: this.floor, market: this.market });
+    this.state = newGame(this.setup, randomSeed(), { floor: this.floor, market: this.market, custom: this.custom });
     this.refresh();
   }
 

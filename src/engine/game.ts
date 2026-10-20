@@ -4,7 +4,7 @@
 import {
   CARDS, CardKind, Deck, HAND_SIZE, MARKET_KINDS, MAX_ROUNDS, RULE, STARTING_DECK, UNLIMITED, UNLIMITED_KINDS, removeCost,
 } from './cards';
-import { DEFAULT_FLOOR, FLOORS, Floor, cellState, colValue, rowValue } from './floors';
+import { DEFAULT_FLOOR, FLOORS, Floor, FloorSpec, cellState, colValue, floorFromSpec, rowValue } from './floors';
 import { shuffle } from './rng';
 
 /** id は全体で通し番号（内部用）．no はプレイヤーごとのカードナンバー（初期デッキを並べた順・買った順に振る） */
@@ -64,6 +64,8 @@ export const parseKey = (k: string): Pos => k.split(',').map(Number) as Pos;
 export interface GameOptions {
   /** 間取り（floors.ts のキー） */
   floor?: string;
+  /** カスタムの間取り（あれば floor より優先） */
+  custom?: FloorSpec;
   /** 実験用：初期デッキ・市場の上書き */
   deck?: Deck;
   market?: CardKind[];
@@ -71,7 +73,7 @@ export interface GameOptions {
 
 export function newGame(setup: PlayerSetup[], seed: number, opts: GameOptions = {}): GameState {
   if (setup.length < 1 || setup.length > 6) throw new Error('人数は1〜6人');
-  const floor = FLOORS[opts.floor ?? DEFAULT_FLOOR] ?? FLOORS[DEFAULT_FLOOR];
+  const floor = opts.custom ? floorFromSpec(opts.custom) : FLOORS[opts.floor ?? DEFAULT_FLOOR] ?? FLOORS[DEFAULT_FLOOR];
   const startingDeck = opts.deck ?? STARTING_DECK;
   const marketKinds = opts.market ?? MARKET_KINDS;
   const state: GameState = {

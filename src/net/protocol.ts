@@ -2,6 +2,7 @@
 
 import type { CardKind } from '../engine/cards';
 import type { Action, GameView } from '../engine/game';
+import type { FloorSpec } from '../engine/floors';
 
 export interface SeatInfo { name: string; isBot: boolean; botType?: string; connected: boolean }
 
@@ -18,7 +19,7 @@ export type ClientMsg =
   | { t: 'join'; name: string; token: string }
   | { t: 'addBot'; botType: string }
   | { t: 'removeSeat'; seat: number }
-  | { t: 'start'; floor?: string; /** 市場に並べる候補（MARKET_PICK 種類） */ market?: CardKind[] }
+  | { t: 'start'; floor?: string; /** 市場に並べる候補（MARKET_PICK 種類） */ market?: CardKind[]; /** カスタムの間取り */ custom?: FloorSpec }
   | { t: 'restart' }
   | { t: 'action'; action: Action };
 

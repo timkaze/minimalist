@@ -62,8 +62,12 @@ a.send({ t: 'addBot', botType: 'learned' }); await sleep(300);
 a.send({ t: 'start', floor: 'grow', market: ['R+', 'D+', 'RD', 'P', 'RD2'] }); await sleep(300);
 assert(a.errors.length === 1 && !a.last?.view, '市場のカードが6種類でなければ開始できない');
 const pick = ['R+', 'D+', 'RD', 'BAG', 'ST', 'CUT'] as const;
-a.send({ t: 'start', floor: 'grow', market: [...pick] }); await sleep(300);
-assert(a.last?.view && b.last?.view && a.last.view.floor.name === 'grow', 'ゲーム開始（間取り：ワンルーム）');
+a.send({ t: 'start', floor: 'grow', market: [...pick], custom: { rows: ['S # .', '. . G'] } }); await sleep(300);
+assert(a.errors.length === 2 && !a.last?.view, 'おかしなカスタム間取りでは開始できない');
+const custom = { rows: ['S . . 3', '. # . .', '. . . G'], rowValues: [0, 0, 2], colValues: [0, 1, 2, 4] };
+a.send({ t: 'start', floor: 'grow', market: [...pick], custom }); await sleep(300);
+assert(a.last?.view && b.last?.view && a.last.view.floor.name === 'custom' && b.last.view.floor.colValues?.[3] === 4,
+  'ゲーム開始（カスタム間取り・目盛りが届く）');
 assert(b.last!.view!.marketKinds.join() === ['R', 'D', ...pick].join(), '選んだ市場で始まる（基本カード＋6種類）');
 assert(a.last!.view!.players[1].hand === undefined && b.last!.view!.players[1].hand !== undefined, '他人の手札は見えない');
 
