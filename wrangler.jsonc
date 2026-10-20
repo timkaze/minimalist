@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "minimalist-online",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-09-01",
+  // 画面（vite build の出力）は Cloudflare が静的配信し，/api/* だけ Worker が受け取る
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  // 部屋ごとの状態を持つ Durable Object（無料プランでは SQLite 版を使う）
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "Room" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }]
+}

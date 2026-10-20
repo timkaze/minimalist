@@ -1,0 +1,26 @@
+{
+  "name": "minimalist-online",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:worker": "npm run build && wrangler dev",
+    "build": "vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p worker",
+    "train": "tsx training/train.ts",
+    "evaluate": "tsx training/evaluate.ts",
+    "deploy": "npm run build && wrangler deploy",
+    "smoke": "tsx scripts/online-smoke.ts"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261019.1",
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5",
+    "wrangler": "^4.151.2"
+  }
+}
