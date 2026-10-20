@@ -114,7 +114,7 @@ function evaluate(
   const field = Object.values(placed);
   if (field.length === 0) return 0;
   const reach = computeReach(placed, state.floor);
-  // 自分で消えるカードは排除力を使わない
+  // 自分で消えるカードは捨欲を使わない
   const free = field.filter(c => CARDS[c.kind].selfRemove).length;
   const targets = (RULE.handRemove ? [...field, ...hand] : field).filter(c => !CARDS[c.kind].selfRemove);
   const left = RULE.handRemove ? 0 : hand.length; // 排除できずに残るカード
@@ -123,7 +123,7 @@ function evaluate(
     return 1e6; // この手番で勝てる
   }
   const prot = protectedKinds(g);
-  // 排除力で消せる枚数（安いものから．goal モードの粗大ごみは無制限のときだけ）
+  // 捨欲で消せる枚数（安いものから．goal モードの粗大ごみは無制限のときだけ）
   const costs = targets
     .filter(c => (finishing || !prot.has(c.kind)) && (reach.corner || RULE.bulky !== 'goal' || !CARDS[c.kind].bulky))
     .map(c => (reach.corner ? 1 : removeCost(c.kind)))
@@ -236,7 +236,7 @@ function planEndTurn(g: BotGenome, state: GameState, p: PlayerState): Action {
     list = [{ kind: 'D', cap: (cnt.D ?? 0) + 1 }, { kind: 'RD', cap: (cnt.RD ?? 0) + 1 }, ...list];
   }
   const market = { ...state.market };
-  // フリマなど，排除すると購入力が増えるカード
+  // フリマなど，排除すると物欲が増えるカード
   const sold = Object.values(p.board).filter(c => remove.includes(c.id)).reduce((n, c) => n + CARDS[c.kind].sell, 0);
   let budget = reach.buy + sold;
   for (;;) {

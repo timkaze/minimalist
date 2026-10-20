@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CARDS, MARKET_KINDS, STARTING_DECK, marketFromPick } from '../src/engine/cards';
-import { FLOORS, RECOMMENDED_FLOORS } from '../src/engine/floors';
+import { FLOORS, RECOMMENDED_FLOORS, parseFloor } from '../src/engine/floors';
 import {
-  GameState, RuleError, applyAction, computeReach, newGame, openCells, ownedCount,
+  GameState, RuleError, applyAction, computeReach, newGame, openCells, ownedCount, viewFor,
 } from '../src/engine/game';
 import { PRESETS } from '../src/bot/bot';
 import { playBotGame } from '../src/bot/runner';
@@ -27,6 +27,50 @@ describe('engine', () => {
     expect(s.market['R']).toBeGreaterThan(50); // 基本カードは売り切れない
   });
 
+  it('戻す：引かないカードは戻せる．引くカードを置いたら，それより前には戻せない', () => {
+    const s = twoPlayers();
+    const p = s.players[0];
+    p.hand = [{ id: 970, kind: 'RD' }, { id: 971, kind: 'R' }, { id: 972, kind: 'R+' }];
+    p.deck.push({ id: 973, kind: 'D' });
+    applyAction(s, 0, { type: 'place', cardId: 970, pos: [0, 1] });
+    applyAction(s, 0, { type: 'place', cardId: 971, pos: [0, 2] });
+    applyAction(s, 0, { type: 'undo' });
+    expect(p.board['0,2']).toBeUndefined();
+    expect(p.hand.map(c => c.id)).toEqual([971, 972]);
+    applyAction(s, 0, { type: 'place', cardId: 972, pos: [1, 1] }); // 台車：1枚引く
+    expect(p.hand.map(c => c.id)).toEqual([971, 973]);
+    expect(() => applyAction(s, 0, { type: 'undo' })).toThrow(RuleError);
+    expect(() => applyAction(s, 1, { type: 'undo' })).toThrow(RuleError);
+    applyAction(s, 0, { type: 'place', cardId: 971, pos: [0, 2] });
+    applyAction(s, 0, { type: 'undo' });
+    expect(Object.keys(p.board).sort()).toEqual(['0,1', '1,1']);
+    applyAction(s, 0, { type: 'endTurn', remove: [], buy: [] });
+    expect(s.undo).toEqual([]);
+  });
+
+  it('カードナンバー：初期デッキは1〜，買ったカードは続きの番号．一覧は番号順', () => {
+    const s = twoPlayers();
+    const p = s.players[0];
+    const nos = [...p.deck, ...p.hand].map(c => c.no!).sort((a, b) => a - b);
+    expect(nos).toEqual(Array.from({ length: DECK }, (_, i) => i + 1));
+    const card = p.hand[0];
+    p.hand[0] = { ...card, kind: 'R' }; // 確実に置けるように→にする（番号はそのまま）
+    applyAction(s, 0, { type: 'place', cardId: card.id, pos: [0, 1] });
+    applyAction(s, 0, { type: 'endTurn', remove: [], buy: ['R'] });
+    expect(p.discard.find(c => c.kind === 'R' && c.no === DECK + 1)).toBeDefined();
+    const v = viewFor(s, 0);
+    expect(v.players[0].cards!.map(c => c.no)).toEqual(Array.from({ length: DECK + 1 }, (_, i) => i + 1));
+    expect(v.players[1].cards).toBeUndefined();
+  });
+
+  it('目盛り：捨欲・物欲は届いた行・列の目盛りの値になる', () => {
+    const f = parseFloor('t', 'テスト', ['S . .', '. . .', '. . G'], { rowValues: [0, 0, 2], colValues: [0, 1, 3] });
+    expect(computeReach({ '0,1': { id: 1, kind: 'D' }, '1,1': { id: 2, kind: 'D' } }, f)).toMatchObject({ buy: 1, remove: 0 });
+    expect(computeReach({ '0,1': { id: 1, kind: 'RD' }, '0,2': { id: 2, kind: 'D' }, '2,1': { id: 3, kind: 'X' } }, f))
+      .toMatchObject({ buy: 3, remove: 3 });
+    expect(() => parseFloor('t', 'テスト', ['S .', '. G'], { rowValues: [0] })).toThrow();
+  });
+
   it('既定の間取りはワンルーム', () => {
     expect(newGame([{ name: 'A' }], 1).floor.name).toBe('grow');
   });
@@ -40,20 +84,20 @@ describe('engine', () => {
     expect(() => applyAction(s, 0, { type: 'endTurn', remove: [950], buy: [] })).toThrow(RuleError);
   });
 
-  it('粗大ごみは排除力を2使う', () => {
+  it('粗大ごみは捨欲を2使う', () => {
     const s = newGame([{ name: 'A' }, { name: 'B' }], 5, { floor: 'basic' });
     const p = s.players[0];
     p.hand = [{ id: 900, kind: 'RD' }, { id: 901, kind: 'X' }, { id: 902, kind: 'J' }];
     applyAction(s, 0, { type: 'place', cardId: 900, pos: [0, 1] });
     applyAction(s, 0, { type: 'place', cardId: 901, pos: [0, 2] });
     applyAction(s, 0, { type: 'place', cardId: 902, pos: [1, 1] });
-    // 排除力2（下へ1＋✕1）：粗大ごみ（2）と仕分け箱（1）は同時に消せない
+    // 捨欲2（下へ1＋✕1）：粗大ごみ（2）と仕分け箱（1）は同時に消せない
     expect(() => applyAction(s, 0, { type: 'endTurn', remove: [902, 900], buy: [] })).toThrow(RuleError);
     applyAction(s, 0, { type: 'endTurn', remove: [902], buy: [] });
     expect(p.removed).toBe(1);
   });
 
-  it('紙袋は置くと1枚引き，手番の終わりに排除力を使わずに消える', () => {
+  it('紙袋は置くと1枚引き，手番の終わりに捨欲を使わずに消える', () => {
     const s = twoPlayers();
     const p = s.players[0];
     p.hand = [{ id: 960, kind: 'BAG' }];
@@ -71,7 +115,7 @@ describe('engine', () => {
     expect(openCells({}, FLOORS.basic, 0)).toEqual([[0, 1]]);
   });
 
-  it('到達距離：購入力は列，排除力は行＋✕', () => {
+  it('到達距離：物欲は列，捨欲は行＋✕', () => {
     const board = { '0,1': { id: 1, kind: 'D' as const }, '1,1': { id: 2, kind: 'X' as const } };
     expect(computeReach(board, FLOORS.basic)).toMatchObject({ buy: 1, remove: 2, corner: false });
     const corner = { ...board, '3,3': { id: 3, kind: 'R' as const } };
@@ -158,7 +202,7 @@ describe('engine', () => {
     expect(newGame([{ name: 'A' }], 3).marketKinds).toEqual(MARKET_KINDS);
   });
 
-  it('試作カード：はしごは2つ下，カッターは段ボールにも置ける，フリマは排除で購入力が増える', () => {
+  it('試作カード：はしごは2つ下，カッターは段ボールにも置ける，フリマは排除で物欲が増える', () => {
     expect(openCells({ '0,1': { id: 1, kind: 'LD' } }, FLOORS.basic, 0)).toContainEqual([2, 1]);
     expect(openCells({ '0,2': { id: 1, kind: 'CUT' } }, FLOORS.grow, 0)).toContainEqual([0, 3]);
     expect(openCells({ '0,2': { id: 1, kind: 'RD' } }, FLOORS.grow, 0)).not.toContainEqual([0, 3]);
@@ -168,7 +212,7 @@ describe('engine', () => {
     applyAction(s, 0, { type: 'place', cardId: 970, pos: [0, 1] });
     applyAction(s, 0, { type: 'place', cardId: 971, pos: [0, 2] });
     applyAction(s, 0, { type: 'place', cardId: 972, pos: [1, 2] });
-    // 購入力2・排除力1．フリマを排除しなければコスト3は買えず，排除すれば購入力4で買える
+    // 物欲2・捨欲1．フリマを排除しなければコスト3は買えず，排除すれば物欲4で買える
     expect(() => applyAction(s, 0, { type: 'endTurn', remove: [], buy: ['D+'] })).toThrow(RuleError);
     applyAction(s, 0, { type: 'endTurn', remove: [970], buy: ['D+'] });
     expect(p.discard.some(c => c.kind === 'D+')).toBe(true);

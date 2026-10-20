@@ -2,8 +2,8 @@ import './style.css';
 import {
   CARDS, CardKind, MARKET_CANDIDATES, MARKET_KINDS, MARKET_PICK, PROTOTYPE_KINDS, RULE, STARTING_DECK, UNLIMITED, marketFromPick, removeCost,
 } from '../engine/cards';
-import { Card, GameView, PlayerSetup, computeReach, openCells, posKey } from '../engine/game';
-import { FLOORS, RECOMMENDED_FLOORS, cellState } from '../engine/floors';
+import { Card, CardPlace, GameView, OwnedCard, PlayerSetup, computeReach, openCells, posKey } from '../engine/game';
+import { FLOORS, RECOMMENDED_FLOORS, cellState, colValue, rowValue } from '../engine/floors';
 import { BOT_LABELS } from '../bot/bot';
 import { MAX_SEATS } from '../net/protocol';
 import { cardHelp, cardSVG } from './cardsvg';
@@ -34,6 +34,8 @@ const ui = {
   mode: 'place' as 'place' | 'finish',
   remove: new Set<number>(),
   cart: [] as CardKind[],
+  /** 持っているカードの一覧を開いているか（手番をまたいで保つ） */
+  showCards: false,
 };
 
 function resetTurnUI() {
@@ -196,9 +198,9 @@ function rulesHTML(): string {
   <ol>
     <li>山札から3枚引く</li>
     <li>スタートマスの→から，矢印の先のマスに手札を置いていく．＋のカードは置いたときに＋の数だけ引く</li>
-    <li>一番右の列＝<b>購入力</b>，一番下の行＋✕の数＝<b>排除力</b>．ゴミ捨て場に置いたら排除力は無制限</li>
-    <li>場に置いたカードから，排除力の範囲で<b>排除</b>する（粗大ごみは排除力2）</li>
-    <li>コストの合計が購入力以下になるよう，市場から<b>購入</b>（捨札へ）</li>
+    <li>届いた一番右の列の目盛り＝<b>物欲</b>（買いたい気持ち），一番下の行の目盛り＋✕の数＝<b>捨欲</b>（捨てたい気持ち）．ゴミ捨て場に置いたら捨欲は無制限</li>
+    <li>場に置いたカードから，捨欲の範囲で<b>排除</b>する（粗大ごみは捨欲2）</li>
+    <li>コストの合計が物欲以下になるよう，市場から<b>購入</b>（捨札へ）</li>
     <li>残りは捨札へ</li>
   </ol>
   <p>📦の数字のマスは，排除した枚数の合計がその数になると置けるようになる（片付けると部屋が広がる）．斜線のマスは柱で置けない．</p>
@@ -303,15 +305,30 @@ function boardHTML(v: GameView, board: Record<string, Card>, removed: number, op
           : `<span class="lock-label">📦${need}<br><small>あと${need - removed}枚</small></span>`;
         attrs = `title="排除した枚数が${need}枚になると置けるようになる"`;
       } else if (isGoal && !opts.small) {
-        inner = `<span class="corner-label">ゴミ捨て場<br>排除力 無制限</span>`;
+        inner = `<span class="corner-label">ゴミ捨て場<br>捨欲 無制限</span>`;
       }
       cells += `<div class="${cls.join(' ')}" ${attrs}>${inner}</div>`;
     }
   }
-  const scaleTop = opts.small ? '' : `<div class="scale-top">${Array.from({ length: v.cols }, (_, i) => `<span>${i}</span>`).join('')}</div>`;
-  const scaleLeft = opts.small ? '' : `<div class="scale-left">${Array.from({ length: v.rows }, (_, i) => `<span>${i}</span>`).join('')}</div>`;
-  return `<div class="board-wrap ${opts.small ? 'small' : ''}" style="--rows:${v.rows};--cols:${v.cols}">${scaleTop}${scaleLeft}
+  // 目盛り：上が物欲（列），左が捨欲（行）
+  const scaleTop = opts.small ? '' : `<div class="scale-top" title="物欲の目盛り（届いた一番右の列）">${Array.from({ length: v.cols }, (_, i) => `<span>${colValue(v.floor, i)}</span>`).join('')}</div>`;
+  const scaleLeft = opts.small ? '' : `<div class="scale-left" title="捨欲の目盛り（届いた一番下の行）">${Array.from({ length: v.rows }, (_, i) => `<span>${rowValue(v.floor, i)}</span>`).join('')}</div>`;
+  const scaleCorner = opts.small ? '' : '<div class="scale-corner">物欲→<br>捨欲↓</div>';
+  return `<div class="board-wrap ${opts.small ? 'small' : ''}" style="--rows:${v.rows};--cols:${v.cols}">${scaleCorner}${scaleTop}${scaleLeft}
     <div class="board">${cells}</div></div>`;
+}
+
+const PLACE_LABEL: Record<CardPlace, string> = { hand: '手札', board: '場', deck: '山札', discard: '捨札' };
+
+/** 持っているカードをカードナンバー順に並べる（山札の順番はわからない） */
+function ownedCardsHTML(cards: OwnedCard[]): string {
+  return `<details class="owned" id="owned" ${ui.showCards ? 'open' : ''}>
+    <summary>持っているカード（${cards.length}枚）</summary>
+    <div class="owned-list">${cards.map(c => `
+      <div class="ocard where-${c.where}" title="${esc(cardHelp(c.kind))}">
+        <span class="ono">No.${c.no}</span>${cardSVG(c.kind, { showName: true })}<span class="owhere">${PLACE_LABEL[c.where]}</span>
+      </div>`).join('')}</div>
+  </details>`;
 }
 
 function renderGame(c: Controller, v: GameView) {
@@ -321,7 +338,7 @@ function renderGame(c: Controller, v: GameView) {
   const myTurn = !!me && v.current === v.you && v.phase === 'play';
   const reach = me ? computeReach(me.board, v.floor) : { buy: 0, remove: 0, corner: false };
   const cartCost = ui.cart.reduce((s, k) => s + CARDS[k].cost, 0);
-  // フリマ（試作）：排除に選んだカードの分だけ購入力が増える
+  // フリマ（試作）：排除に選んだカードの分だけ物欲が増える
   const sold = me ? Object.values(me.board).filter(c => ui.remove.has(c.id)).reduce((n, c) => n + CARDS[c.kind].sell, 0) : 0;
   const buyPower = reach.buy + sold;
   const cur = v.players[v.current];
@@ -347,6 +364,7 @@ function renderGame(c: Controller, v: GameView) {
   let controls = '';
   if (myTurn && ui.mode === 'place') {
     controls = `<p class="instr">${ui.selected === null ? '手札を選んで，光っているマスに置きます' : '置くマスを選んでください'}</p>
+      <button id="undo" ${v.undoCount > 0 ? '' : 'disabled'} title="引くカードを置いた後は，それより前に戻せません">↶ 戻す${v.undoCount > 0 ? `（${v.undoCount}）` : ''}</button>
       <button class="primary" id="toFinish">配置を終える</button>`;
   } else if (myTurn && ui.mode === 'finish') {
     controls = `<p class="instr">排除するカード（場${RULE.handRemove ? '・手札' : ''}）と，買うカード（市場）を選んで手番を終えます．手札に残ったカードは捨札へ</p>
@@ -359,13 +377,14 @@ function renderGame(c: Controller, v: GameView) {
 
   const stats = me ? `
     <div class="stats">
-      <span>購入力 <b>${buyPower}</b>${myTurn && ui.mode === 'finish' ? `（使用 ${cartCost}）` : ''}</span>
-      <span>排除力 <b>${reach.corner ? '無制限' : reach.remove}</b>${myTurn && ui.mode === 'finish' ? `（選択 ${ui.remove.size}枚）` : ''}</span>
+      <span>物欲 <b>${buyPower}</b>${myTurn && ui.mode === 'finish' ? `（使用 ${cartCost}）` : ''}</span>
+      <span>捨欲 <b>${reach.corner ? '無制限' : reach.remove}</b>${myTurn && ui.mode === 'finish' ? `（選択 ${ui.remove.size}枚）` : ''}</span>
       <span>残り所持 <b>${me.owned}</b></span>
       <span>山札 ${me.deckCount} / 捨札 ${me.discardCount}</span>
       <span>排除済み ${me.removed}</span>
     </div>
-    <div class="comp">内訳：${Object.entries(me.composition ?? {}).map(([k, n]) => `${CARDS[k as CardKind].name}×${n}`).join('　') || 'なし'}</div>` : '';
+    <div class="comp">内訳：${Object.entries(me.composition ?? {}).map(([k, n]) => `${CARDS[k as CardKind].name}×${n}`).join('　') || 'なし'}</div>
+    ${ownedCardsHTML(me.cards ?? [])}` : '';
 
   const others = v.players.map((p, i) => i === v.you ? '' : `
     <div class="opp ${i === v.current && v.phase === 'play' ? 'active' : ''}">
@@ -428,7 +447,7 @@ function renderGame(c: Controller, v: GameView) {
       const used = [...ui.remove].reduce((n, cid) => n + costOf(cid), 0);
       if (ui.remove.has(id)) ui.remove.delete(id);
       else if (used + costOf(id) <= reach.remove) ui.remove.add(id);
-      else return showToast(`排除力が足りません（あと${reach.remove - used}．粗大ごみは2つ分）`);
+      else return showToast(`捨欲が足りません（あと${reach.remove - used}．粗大ごみは2つ分）`);
       render();
     };
   });
@@ -438,6 +457,10 @@ function renderGame(c: Controller, v: GameView) {
   app.querySelectorAll<HTMLElement>('[data-uncart]').forEach(el => {
     el.onclick = () => { ui.cart.splice(Number(el.dataset.uncart), 1); render(); };
   });
+  app.querySelector<HTMLDetailsElement>('#owned')?.addEventListener('toggle', e => {
+    ui.showCards = (e.target as HTMLDetailsElement).open;
+  });
+  app.querySelector<HTMLButtonElement>('#undo')?.addEventListener('click', () => { ui.selected = null; c.act({ type: 'undo' }); });
   app.querySelector<HTMLButtonElement>('#toFinish')?.addEventListener('click', () => { ui.mode = 'finish'; ui.selected = null; render(); });
   app.querySelector<HTMLButtonElement>('#toPlace')?.addEventListener('click', () => {
     ui.mode = 'place'; ui.remove.clear(); ui.cart = []; render();

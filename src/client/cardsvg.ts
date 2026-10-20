@@ -35,7 +35,7 @@ export function cardSVG(kind: CardKind, opts: { showName?: boolean } = {}): stri
     s += `<text x="40" y="54" font-size="34" text-anchor="middle" font-weight="700" fill="currentColor">∞</text>`;
   }
   // 試作カードの効果は文字で示す
-  const label = c.cutter ? '段ボールにも置ける' : c.bonus ? `排除で${1 + c.bonus}枚分` : c.sell ? `排除で購入力+${c.sell}` : '';
+  const label = c.cutter ? '段ボールにも置ける' : c.bonus ? `排除で${1 + c.bonus}枚分` : c.sell ? `排除で物欲+${c.sell}` : '';
   if (label) s += `<text x="40" y="30" font-size="8" text-anchor="middle" fill="currentColor">${label}</text>`;
   if (c.selfRemove) {
     // 使い捨て：右下に小さなゴミ箱．手番の終わりに自分で消える
@@ -58,13 +58,13 @@ export function cardHelp(kind: CardKind): string {
   const parts: string[] = [];
   const arrows = c.moves.map(([dr, dc]) => ({ '0,1': '→', '1,0': '↓', '1,1': '↘', '0,2': '⇒（2つ右）', '2,0': '⇓（2つ下）' } as Record<string, string>)[`${dr},${dc}`]).join('');
   parts.push(arrows ? `矢印 ${arrows}` : '矢印なし（行き止まり）');
-  if (c.x) parts.push(`排除力+${c.x}`);
+  if (c.x) parts.push(`捨欲+${c.x}`);
   if (c.draw) parts.push(`置いたとき${c.draw}枚引く`);
-  if (c.goal) parts.push('置くと排除力無制限（持ち運べるゴミ捨て場）');
-  if (c.selfRemove) parts.push('使い捨て：手番の終わりに排除力を使わずに排除される');
+  if (c.goal) parts.push('置くと捨欲無制限（持ち運べるゴミ捨て場）');
+  if (c.selfRemove) parts.push('使い捨て：手番の終わりに捨欲を使わずに排除される');
   if (c.cutter) parts.push('矢印の先がまだ開いていない段ボールでも置ける');
   if (c.bonus) parts.push(`排除すると${1 + c.bonus}枚分に数える（段ボールが早く開く）`);
-  if (c.sell) parts.push(`排除すると，その手番の購入力+${c.sell}`);
-  if (c.bulky) parts.push(RULE.bulky === 'double' ? '排除するのに排除力を2使う' : 'ゴミ捨て場かゴミ収集車を置いた手番にしか排除できない');
+  if (c.sell) parts.push(`排除すると，その手番の物欲+${c.sell}`);
+  if (c.bulky) parts.push(RULE.bulky === 'double' ? '排除するのに捨欲を2使う' : 'ゴミ捨て場かゴミ収集車を置いた手番にしか排除できない');
   return `${c.name}（コスト${c.cost}）：${parts.join('，')}`;
 }

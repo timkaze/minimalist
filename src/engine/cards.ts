@@ -15,17 +15,17 @@ export interface CardDef {
   moves: [number, number][];
   /** 矢印の先が段ボールでも置ける */
   cutter: boolean;
-  /** 手番の終わりに，排除力を使わずに自分を排除する */
+  /** 手番の終わりに，捨欲を使わずに自分を排除する */
   selfRemove: boolean;
   /** 排除したとき，排除した枚数に追加で数える枚数（段ボールが早く開く） */
   bonus: number;
-  /** 排除したとき，この手番の購入力に足す値 */
+  /** 排除したとき，この手番の物欲に足す値 */
   sell: number;
-  /** ✕ の数（排除力 +1 ずつ） */
+  /** ✕ の数（捨欲 +1 ずつ） */
   x: number;
   /** ＋ の数（置いたときに引く枚数） */
   draw: number;
-  /** ∞ 置くと排除力が無制限（持ち運べるゴミ捨て場） */
+  /** ∞ 置くと捨欲が無制限（持ち運べるゴミ捨て場） */
   goal: boolean;
   /** 粗大ごみ（扱いは RULE.bulky で決まる） */
   bulky: boolean;
@@ -75,9 +75,9 @@ export const MARKET_KINDS: CardKind[] = ['R', 'D', 'R+', 'D+', 'RD', 'P', 'RD2',
 export const UNLIMITED_KINDS: CardKind[] = ['R', 'D'];
 
 /** 開始時に市場へ並べられる候補（基本カードは別に必ず並ぶ）．前の6種が標準，後ろは試作 */
-export const MARKET_CANDIDATES: CardKind[] = ['R+', 'D+', 'RD', 'P', 'RD2', 'BAG', 'TRK', 'ST', 'LD', 'LR', 'CUT', 'PT', 'SELL'];
+export const MARKET_CANDIDATES: CardKind[] = ['R+', 'D+', 'RD', 'P', 'RD2', 'BAG', 'X', 'TRK', 'ST', 'LD', 'LR', 'CUT', 'PT', 'SELL'];
 /** 試作カード（ボットは学習していないので，ほとんど買わない） */
-export const PROTOTYPE_KINDS: CardKind[] = ['TRK', 'ST', 'LD', 'LR', 'CUT', 'PT', 'SELL'];
+export const PROTOTYPE_KINDS: CardKind[] = ['X', 'TRK', 'ST', 'LD', 'LR', 'CUT', 'PT', 'SELL'];
 /** 候補から選ぶ枚数（種類数） */
 export const MARKET_PICK = 6;
 
@@ -90,7 +90,7 @@ export function marketFromPick(pick: string[]): CardKind[] {
 }
 export const UNLIMITED = 99;
 
-/** 初期デッキ（✕のゴミ袋はこの1枚だけ．市場には無い） */
+/** 初期デッキ（✕のゴミ袋は1枚だけ．標準の市場には無い．候補として市場に並べることはできる） */
 export const STARTING_DECK: Deck = [
   { kind: 'R', count: 3 }, { kind: 'D', count: 2 }, { kind: 'RD', count: 1 }, { kind: 'D+', count: 1 },
   { kind: 'J', count: 2 }, { kind: 'X', count: 1 },
@@ -99,8 +99,8 @@ export const STARTING_DECK: Deck = [
 /**
  * 検証用に切り替えられるルール
  * 粗大ごみの扱い
- *   double：排除するのに排除力を2使う
- *   goal：排除力が無制限のとき（ゴミ捨て場・ゴミ収集車）しか排除できない
+ *   double：排除するのに捨欲を2使う
+ *   goal：捨欲が無制限のとき（ゴミ捨て場・ゴミ収集車）しか排除できない
  */
 export const RULE = {
   bulky: 'double' as 'double' | 'goal',
@@ -108,7 +108,7 @@ export const RULE = {
   handRemove: false,
 };
 
-/** そのカードを排除するのに使う排除力（goal モードの粗大ごみは無制限のときだけ排除できる） */
+/** そのカードを排除するのに使う捨欲（goal モードの粗大ごみは無制限のときだけ排除できる） */
 export function removeCost(kind: CardKind): number {
   return CARDS[kind].bulky && RULE.bulky === 'double' ? 2 : 1;
 }

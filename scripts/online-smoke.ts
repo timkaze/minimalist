@@ -34,7 +34,7 @@ class Client {
       this.send({ t: 'action', action: { type: 'place', cardId: me.hand![0].id, pos: open[0] } });
     } else {
       const reach = computeReach(me.board, v.floor);
-      // 排除力の範囲で選ぶ（粗大ごみは2つ分）
+      // 捨欲の範囲で選ぶ（粗大ごみは2つ分）
       let points = reach.corner ? 99 : reach.remove;
       const ids: number[] = [];
       for (const c of Object.values(me.board)) { // 場のカードだけ排除できる

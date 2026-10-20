@@ -4,10 +4,11 @@
 import {
   CARDS, CardKind, Deck, HAND_SIZE, MARKET_KINDS, MAX_ROUNDS, RULE, STARTING_DECK, UNLIMITED, UNLIMITED_KINDS, removeCost,
 } from './cards';
-import { DEFAULT_FLOOR, FLOORS, Floor, cellState } from './floors';
+import { DEFAULT_FLOOR, FLOORS, Floor, cellState, colValue, rowValue } from './floors';
 import { shuffle } from './rng';
 
-export interface Card { id: number; kind: CardKind }
+/** id は全体で通し番号（内部用）．no はプレイヤーごとのカードナンバー（初期デッキを並べた順・買った順に振る） */
+export interface Card { id: number; kind: CardKind; no?: number }
 export type Pos = [number, number];
 
 export interface PlayerState {
@@ -23,6 +24,8 @@ export interface PlayerState {
   removed: number;
   bought: number;
   finished: boolean;
+  /** 次に振るカードナンバー */
+  nextNo?: number;
 }
 
 export type Phase = 'play' | 'over';
@@ -43,10 +46,14 @@ export interface GameState {
   winners: number[];
   log: string[];
   nextCardId: number;
+  /** 手番中の巻き戻し用：置く前の手札と場（引く前までしか戻れないので，引いたら空にする） */
+  undo?: string[];
 }
 
 export type Action =
   | { type: 'place'; cardId: number; pos: Pos }
+  /** 直前に置いたカードを手札に戻す（引くカードを置いた後は，それより前に戻れない） */
+  | { type: 'undo' }
   | { type: 'endTurn'; remove: number[]; buy: CardKind[] };
 
 export interface PlayerSetup { name: string; isBot?: boolean; botType?: string }
@@ -86,13 +93,15 @@ export function newGame(setup: PlayerSetup[], seed: number, opts: GameOptions = 
   for (const k of marketKinds) state.market[k] = UNLIMITED_KINDS.includes(k) ? UNLIMITED : Math.max(2, setup.length);
   for (const s of setup) {
     const deck: Card[] = [];
+    // カードナンバーは混ぜる前に振る（山札の順番はわからない）
     for (const { kind, count } of startingDeck) {
-      for (let i = 0; i < count; i++) deck.push({ id: state.nextCardId++, kind });
+      for (let i = 0; i < count; i++) deck.push({ id: state.nextCardId++, kind, no: deck.length + 1 });
     }
+    const nextNo = deck.length + 1;
     shuffle(deck, state);
     state.players.push({
       name: s.name, isBot: !!s.isBot, botType: s.botType,
-      deck, discard: [], hand: [], board: {}, removed: 0, bought: 0, finished: false,
+      deck, discard: [], hand: [], board: {}, removed: 0, bought: 0, finished: false, nextNo,
     });
   }
   drawCards(state, state.players[0], HAND_SIZE);
@@ -144,13 +153,13 @@ export function openCells(board: Record<string, Card>, floor: Floor, removed: nu
 
 export interface Reach { buy: number; remove: number; corner: boolean }
 
-/** 購入力＝右への到達距離，排除力＝下への到達距離＋✕の数．ゴミ捨て場に置いたら排除力は無制限 */
+/** 物欲＝右への到達距離，捨欲＝下への到達距離＋✕の数．ゴミ捨て場に置いたら捨欲は無制限 */
 export function computeReach(board: Record<string, Card>, floor: Floor): Reach {
   let buy = 0, down = 0, x = 0, portableGoal = false;
   for (const [k, c] of Object.entries(board)) {
     const [r, col] = parseKey(k);
-    buy = Math.max(buy, col);
-    down = Math.max(down, r);
+    buy = Math.max(buy, colValue(floor, col));
+    down = Math.max(down, rowValue(floor, r));
     x += CARDS[c.kind].x;
     if (CARDS[c.kind].goal) portableGoal = true;
   }
@@ -165,6 +174,14 @@ export function applyAction(state: GameState, seat: number, action: Action): voi
   if (state.phase !== 'play') throw new RuleError('ゲームは終了しています');
   if (seat !== state.current) throw new RuleError('あなたの手番ではありません');
   const p = state.players[seat];
+  if (action.type === 'undo') {
+    const snap = state.undo?.pop();
+    if (!snap) throw new RuleError('これ以上戻せません（カードを引いた後は戻せません）');
+    const { hand, board } = JSON.parse(snap) as { hand: Card[]; board: Record<string, Card> };
+    p.hand = hand;
+    p.board = board;
+    return;
+  }
   if (action.type === 'place') {
     const idx = p.hand.findIndex(c => c.id === action.cardId);
     if (idx < 0) throw new RuleError('そのカードは手札にありません');
@@ -172,9 +189,12 @@ export function applyAction(state: GameState, seat: number, action: Action): voi
     if (!openCells(p.board, state.floor, p.removed).some(o => posKey(o) === key)) {
       throw new RuleError('そのマスには置けません');
     }
+    const def = CARDS[p.hand[idx].kind];
+    // 引くカードは山札（非公開）に触れるので，置いたらそこより前には戻れない
+    if (def.draw > 0) state.undo = [];
+    else (state.undo ??= []).push(JSON.stringify({ hand: p.hand, board: p.board }));
     const [card] = p.hand.splice(idx, 1);
     p.board[key] = card;
-    const def = CARDS[card.kind];
     if (def.draw > 0) {
       const n = drawCards(state, p, def.draw);
       state.log.push(`${p.name}：${def.name}を置いて${n}枚引いた`);
@@ -186,14 +206,14 @@ export function applyAction(state: GameState, seat: number, action: Action): voi
   const removable = new Map<number, 'board' | 'hand'>();
   for (const c of Object.values(p.board)) removable.set(c.id, 'board');
   if (RULE.handRemove) for (const c of p.hand) removable.set(c.id, 'hand');
-  // 自分で消えるカード（紙袋など）は排除力を使わずに排除する
+  // 自分で消えるカード（紙袋など）は捨欲を使わずに排除する
   const auto = Object.values(p.board).filter(c => CARDS[c.kind].selfRemove).map(c => c.id);
   const removeIds = [...new Set(action.remove)].filter(id => !auto.includes(id));
   if (removeIds.some(id => !removable.has(id))) throw new RuleError(RULE.handRemove ? '場と手札のカードしか排除できません' : '場に置いたカードしか排除できません');
   const removeKinds = removeIds.map(id => [...Object.values(p.board), ...p.hand].find(c => c.id === id)!.kind);
   const points = removeKinds.reduce((n, k) => n + removeCost(k), 0);
   if (points > reach.remove) {
-    throw new RuleError(`排除力${reach.remove}を超えています${RULE.bulky === 'double' ? '（粗大ごみは2つ分）' : ''}`);
+    throw new RuleError(`捨欲${reach.remove}を超えています${RULE.bulky === 'double' ? '（粗大ごみは2つ分）' : ''}`);
   }
   if (!reach.corner && RULE.bulky === 'goal' && removeKinds.some(k => CARDS[k].bulky)) {
     throw new RuleError('粗大ごみは，ゴミ捨て場に置いたときしか排除できません');
@@ -209,7 +229,7 @@ export function applyAction(state: GameState, seat: number, action: Action): voi
     if (state.market[k as CardKind] < n!) throw new RuleError(`${CARDS[k as CardKind].name}は売り切れです`);
   }
   const sold = removeKinds.reduce((n, k) => n + CARDS[k].sell, 0);
-  if (total > reach.buy + sold) throw new RuleError(`購入力${reach.buy + sold}を超えています`);
+  if (total > reach.buy + sold) throw new RuleError(`物欲${reach.buy + sold}を超えています`);
 
   const removeSet = new Set([...removeIds, ...auto]);
   const allRemoved = [...removeSet].map(id => Object.values(p.board).find(c => c.id === id) ?? p.hand.find(c => c.id === id)!);
@@ -217,13 +237,15 @@ export function applyAction(state: GameState, seat: number, action: Action): voi
   p.removed += allRemoved.reduce((n, c) => n + 1 + CARDS[c.kind].bonus, 0);
   for (const k of action.buy) {
     if (!UNLIMITED_KINDS.includes(k)) state.market[k]--;
-    p.discard.push({ id: state.nextCardId++, kind: k });
+    p.nextNo ??= state.nextCardId; // 番号を持たない古い状態では id を番号の代わりにしている
+    p.discard.push({ id: state.nextCardId++, kind: k, no: p.nextNo++ });
     p.bought++;
   }
   p.discard.push(...rest);
   p.board = {};
   p.hand = [];
-  const parts = [`${p.name}：購入力${reach.buy}・排除力${reach.corner ? '無制限' : reach.remove}`];
+  state.undo = [];
+  const parts = [`${p.name}：物欲${reach.buy}・捨欲${reach.corner ? '無制限' : reach.remove}`];
   if (removeSet.size) parts.push(`${removeSet.size}枚排除`);
   if (action.buy.length) parts.push(`購入 ${action.buy.map(k => CARDS[k].name).join('・')}`);
   state.log.push(parts.join(' / '));
@@ -279,7 +301,12 @@ export interface PlayerView {
   hand?: Card[];
   /** 本人だけに見える：持っているカードの内訳 */
   composition?: Partial<Record<CardKind, number>>;
+  /** 本人だけに見える：持っているカード（カードナンバー順．山札の順番はわからない） */
+  cards?: OwnedCard[];
 }
+
+export type CardPlace = 'hand' | 'board' | 'deck' | 'discard';
+export interface OwnedCard { no: number; kind: CardKind; where: CardPlace }
 
 export interface GameView {
   rows: number;
@@ -294,6 +321,8 @@ export interface GameView {
   winners: number[];
   log: string[];
   you: number;
+  /** 手番の人が戻せる手数 */
+  undoCount: number;
 }
 
 export function viewFor(state: GameState, you: number): GameView {
@@ -309,6 +338,7 @@ export function viewFor(state: GameState, you: number): GameView {
     winners: [...state.winners],
     log: state.log.slice(-60),
     you,
+    undoCount: state.undo?.length ?? 0,
     players: state.players.map((p, i) => {
       const v: PlayerView = {
         name: p.name, isBot: p.isBot, botType: p.botType,
@@ -323,6 +353,9 @@ export function viewFor(state: GameState, you: number): GameView {
           comp[c.kind] = (comp[c.kind] ?? 0) + 1;
         }
         v.composition = comp;
+        const where: [Card[], CardPlace][] = [[p.hand, 'hand'], [Object.values(p.board), 'board'], [p.deck, 'deck'], [p.discard, 'discard']];
+        v.cards = where.flatMap(([cs, w]) => cs.map(c => ({ no: c.no ?? c.id, kind: c.kind, where: w })))
+          .sort((a, b) => a.no - b.no);
       }
       return v;
     }),
