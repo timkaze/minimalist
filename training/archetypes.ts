@@ -1,5 +1,5 @@
 // 強い戦略が1つだけか，いくつかの系統があるかを調べる：npx tsx training/archetypes.ts [世代数 個体数 試合数]
-// 「何でも買える」「ハブなし」「台車なし」「通路なし」「紙袋なし」「台車・ハブなし」で別々に学習し，
+// 「何でも取得できる」「レベル3なし」「レベル2・3なし」「紙袋なし」「引かない」で別々に学習し，
 // それぞれの最強個体どうし（＋プリセット）を同じ卓で戦わせる．
 // 全部が1.0前後なら，系統の違う戦略が並び立っている（＝支配的な戦略がない）
 
@@ -23,11 +23,10 @@ const LINES: { name: string; forbid: CardKind[] }[] = process.env.LINES
   })
   : [
     { name: '自由', forbid: [] },
-    { name: 'ハブなし', forbid: ['RD2'] },
-    { name: '台車なし', forbid: ['R+'] },
-    { name: '通路なし', forbid: ['D+'] },
+    { name: 'レベル3なし', forbid: ['RD2', 'ALL'] },
+    { name: 'レベル2・3なし', forbid: ['R+', 'D+', 'UD', 'RD2', 'ALL'] },
     { name: '紙袋なし', forbid: ['BAG'] },
-    { name: '台車・ハブなし', forbid: ['R+', 'RD2'] },
+    { name: '引かない', forbid: ['BAG', 'R+', 'D+', 'RD2', 'ALL'] },
   ];
 
 const champs: { name: string; g: BotGenome }[] = [];

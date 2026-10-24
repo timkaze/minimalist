@@ -10,6 +10,7 @@
   --mark-soft: #f6dcd6;
   --card-bg: #ffffff;
   --start: #e6e4de;
+  --buy: #2f5f9e;
   --cell: 64px;
   color-scheme: light;
 }
@@ -17,13 +18,13 @@
   :root:not([data-theme="light"]) {
     --bg: #1b1c1d; --surface: #252628; --ink: #e8e6e1; --muted: #9a9893; --line: #3b3c3f;
     --accent: #6fc2ad; --accent-soft: #24413a; --mark: #e08470; --mark-soft: #4a2c25;
-    --card-bg: #2e2f31; --start: #333436; color-scheme: dark;
+    --card-bg: #2e2f31; --start: #333436; --buy: #86a9e0; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #1b1c1d; --surface: #252628; --ink: #e8e6e1; --muted: #9a9893; --line: #3b3c3f;
   --accent: #6fc2ad; --accent-soft: #24413a; --mark: #e08470; --mark-soft: #4a2c25;
-  --card-bg: #2e2f31; --start: #333436; color-scheme: dark;
+  --card-bg: #2e2f31; --start: #333436; --buy: #86a9e0; color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -169,3 +170,62 @@ header button { margin-left: auto; }
 .ce-cell.locked { background: var(--start); }
 .ce-cell.goal { background: color-mix(in srgb, var(--accent-soft) 50%, var(--surface)); }
 .ce-error { color: var(--mark); font-size: 13px; }
+
+/* ---- レベル版（test ブランチ） ---- */
+.badge { font-size: 13px; font-weight: 400; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; vertical-align: middle; }
+/* カードのレベルの色：0 灰，1 緑，2 青，3 紫 */
+.card-svg { --lv: var(--muted); }
+.card-svg.lv1 { --lv: #3f8f5a; } .card-svg.lv2 { --lv: var(--buy); } .card-svg.lv3 { --lv: #8a4fb0; }
+.card-level { fill: var(--lv); }
+.card-level-text { fill: var(--card-bg); }
+.mlevel { font-size: 12px; font-weight: 700; color: var(--card-bg); background: var(--muted); border-radius: 4px; padding: 2px 6px; align-self: center; }
+.mlevel.lv1 { background: #3f8f5a; } .mlevel.lv2 { background: var(--buy); } .mlevel.lv3 { background: #8a4fb0; }
+
+.market2 { display: flex; flex-direction: column; gap: 4px; padding: 12px 0; overflow-x: auto; }
+.mrow { display: flex; gap: 8px; }
+
+.board2 {
+  --cell: 54px;
+  display: grid; grid-template-columns: minmax(3.2em, auto) var(--cell) repeat(var(--cols), var(--cell));
+  grid-auto-rows: var(--cell); gap: 0; width: max-content; max-width: 100%; overflow-x: auto;
+}
+.board2 > .b-corner, .board2 > .b-budget { height: 22px; font-size: 11px; color: var(--muted); align-self: end; text-align: center; }
+.board2 > .b-budget { font-weight: 700; font-size: 13px; }
+.board2 > .b-corner { grid-column: 1 / span 2; text-align: left; }
+.board2:not(.small) { grid-template-rows: 22px; }
+.b-level { font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; }
+.b-level.row-buy { color: var(--buy); } .b-level.row-drop { color: var(--mark); } .b-level.row-zero { color: var(--muted); }
+.b-start { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: var(--start); border-radius: 6px 0 0 6px; }
+.board2 .cell.row-buy { background: color-mix(in srgb, var(--buy) 7%, var(--surface)); }
+.board2 .cell.row-drop { background: color-mix(in srgb, var(--mark) 7%, var(--surface)); }
+.board2 .cell.row-zero { background: var(--surface); }
+.board2 .cell.open { background: var(--accent-soft); }
+.board2 .cell.wall { background: repeating-linear-gradient(45deg, var(--line) 0 4px, var(--start) 4px 9px); }
+/* 行き先：カードの上からでも見えるように outline で描く */
+.cell.target { outline: 3px dashed var(--ink); outline-offset: -3px; z-index: 1; }
+.cell.target.clickable:hover { outline: 4px solid var(--accent); }
+.cell.chosen { outline: 4px solid var(--accent); outline-offset: -3px; z-index: 2; }
+.board2.small { --cell: 22px; font-size: 10px; grid-template-columns: minmax(1.8em, auto) var(--cell) repeat(var(--cols), var(--cell)); }
+.board2.small .b-level { font-size: 9px; padding-right: 3px; }
+.board2.small .b-start { font-size: 10px; }
+
+.hcard { position: relative; }
+.hcard.reserve { border-style: dashed; }
+.hcard .tag { position: absolute; left: 2px; bottom: 2px; font-size: 10px; background: var(--surface); border-radius: 4px; padding: 0 3px; }
+.hcard.kept { outline: 3px solid var(--buy); }
+
+.ce-grid { grid-template-columns: 3.4em 4.4em repeat(var(--cols), 36px); }
+.custom-map .ce-cell { width: 36px; height: 36px; }
+.ce-cell.open.row-buy { background: color-mix(in srgb, var(--buy) 10%, var(--surface)); }
+.ce-cell.open.row-drop { background: color-mix(in srgb, var(--mark) 10%, var(--surface)); }
+.custom-map .ce-scale.lvl.row-buy { color: var(--buy); } .custom-map .ce-scale.lvl.row-drop { color: var(--mark); }
+.ce-start { font-size: 10px; font-weight: 700; align-self: center; }
+.custom-map .ce-grid > .ce-scale[data-level] { height: 36px; }
+
+.me > div:first-child { min-width: 0; max-width: 100%; }
+@media (max-width: 700px) {
+  .board2 { --cell: 32px; }
+  .board2:not(.small) { grid-template-columns: minmax(2.6em, auto) 40px repeat(var(--cols), var(--cell)); }
+  .board2 .b-level { font-size: 10px; }
+  .board2 .b-start { font-size: 9px; }
+}

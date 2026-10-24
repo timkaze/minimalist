@@ -1,8 +1,8 @@
 // オンライン対戦の動作確認：npx tsx scripts/online-smoke.ts [URL]
 // 2人の人間（自動操作）＋ボット1体で部屋を作り，数ラウンド進めて，再接続も確かめる
 
-import { computeReach, openCells } from '../src/engine/game';
-import { removeCost } from '../src/engine/cards';
+import { openCells, targetsFor } from '../src/engine/game';
+import { CARDS } from '../src/engine/cards';
 import type { ServerMsg, ClientMsg } from '../src/net/protocol';
 
 const BASE = (process.argv[2] ?? 'http://127.0.0.1:8787').replace(/^http/, 'ws');
@@ -29,19 +29,21 @@ class Client {
     const v = this.last?.view;
     if (!v || v.phase !== 'play' || v.current !== v.you) return false;
     const me = v.players[v.you];
-    const open = openCells(me.board, v.floor, me.removed);
+    const open = openCells(me.board, v.floor);
     if (me.hand!.length && open.length) {
       this.send({ t: 'action', action: { type: 'place', cardId: me.hand![0].id, pos: open[0] } });
     } else {
-      const reach = computeReach(me.board, v.floor);
-      // 捨欲の範囲で選ぶ（粗大ごみは2つ分）
-      let points = reach.corner ? 99 : reach.remove;
+      // 一番下の行き先で，レベルと支払える額の範囲で場のカードを排除する
+      const t = targetsFor(me.board, v.floor).sort((x, y) => x.level - y.level)[0];
       const ids: number[] = [];
-      for (const c of Object.values(me.board)) { // 場のカードだけ排除できる
-        const cost = reach.corner ? 1 : removeCost(c.kind);
-        if (cost <= points) { ids.push(c.id); points -= cost; }
+      if (t && t.level < 0) {
+        let points = t.budget;
+        for (const c of Object.values(me.board)) {
+          const d = CARDS[c.kind];
+          if (!d.selfRemove && d.level <= -t.level && d.removeCost <= points) { ids.push(c.id); points -= d.removeCost; }
+        }
       }
-      this.send({ t: 'action', action: { type: 'endTurn', remove: ids, buy: [] } });
+      this.send({ t: 'action', action: { type: 'endTurn', target: ids.length ? t.pos : undefined, remove: ids, buy: [] } });
     }
     return true;
   }
@@ -59,16 +61,16 @@ assert(a.last?.room.seats.length === 2, '2人が着席');
 b.send({ t: 'addBot', botType: 'learned' }); await sleep(200);
 assert(b.errors.length === 1, 'ホスト以外はボットを追加できない');
 a.send({ t: 'addBot', botType: 'learned' }); await sleep(300);
-a.send({ t: 'start', floor: 'grow', market: ['R+', 'D+', 'RD', 'P', 'RD2'] }); await sleep(300);
-assert(a.errors.length === 1 && !a.last?.view, '市場のカードが6種類でなければ開始できない');
-const pick = ['R+', 'D+', 'RD', 'BAG', 'ST', 'CUT'] as const;
-a.send({ t: 'start', floor: 'grow', market: [...pick], custom: { rows: ['S # .', '. . G'] } }); await sleep(300);
+a.send({ t: 'start', floor: 'standard', market: ['R+', 'D+', 'RD', 'P', 'RD2'] }); await sleep(300);
+assert(a.errors.length === 1 && !a.last?.view, '市場のカードが8種類でなければ開始できない');
+const pick = ['RD', 'RU', 'P', 'BAG', 'R+', 'D+', 'UD', 'RUD'] as const;
+a.send({ t: 'start', floor: 'standard', market: [...pick], custom: { rows: ['# .', '. .'], levels: [0, -1], budgets: [1, 2] } }); await sleep(300);
 assert(a.errors.length === 2 && !a.last?.view, 'おかしなカスタム間取りでは開始できない');
-const custom = { rows: ['S . . 3', '. # . .', '. . . G'], rowValues: [0, 0, 2], colValues: [0, 1, 2, 4] };
-a.send({ t: 'start', floor: 'grow', market: [...pick], custom }); await sleep(300);
-assert(a.last?.view && b.last?.view && a.last.view.floor.name === 'custom' && b.last.view.floor.colValues?.[3] === 4,
-  'ゲーム開始（カスタム間取り・目盛りが届く）');
-assert(b.last!.view!.marketKinds.join() === ['R', 'D', ...pick].join(), '選んだ市場で始まる（基本カード＋6種類）');
+const custom = { rows: ['. . . .', '. . . .', '. # . .', '. . . .', '. . . .'], levels: [2, 1, 0, -1, -2], budgets: [1, 2, 3, 5] };
+a.send({ t: 'start', floor: 'standard', market: [...pick], custom }); await sleep(300);
+assert(a.last?.view && b.last?.view && a.last.view.floor.name === 'custom' && b.last.view.floor.budgets[3] === 5,
+  'ゲーム開始（カスタム間取り・行のレベルと列の額が届く）');
+assert(b.last!.view!.marketKinds.join() === ['R', 'D', 'U', ...pick].join(), '選んだ市場で始まる（基本カード＋8種類）');
 assert(a.last!.view!.players[1].hand === undefined && b.last!.view!.players[1].hand !== undefined, '他人の手札は見えない');
 
 let actions = 0;

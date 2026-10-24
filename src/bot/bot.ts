@@ -1,20 +1,21 @@
-// ボット．Python シミュレーター（ミニマリスト_sim.py）の方針を移植したもの．
+// ボット（test ブランチ：レベル版）．
 // 方針はすべて BotGenome のパラメータで決まるので，学習（training/train.ts）で調整できる．
-// 山札の中身（順番）は見ない．見るのは自分の手札・場・枚数と，公開情報だけ．
+// 山札の中身（順番）は見ない．見るのは自分の手札・手元・場・枚数と，公開情報だけ．
 
-import { CARDS, CardKind, MARKET_KINDS, RULE, isBranch, isDeadEnd, removeCost } from '../engine/cards';
+import { CARDS, CardKind, HAND_SIZE, MARKET_KINDS, RESERVE_SIZE, hasDown, hasUp } from '../engine/cards';
 import {
-  Action, Card, GameState, PlayerState, computeReach, openCells, posKey, Pos,
+  Action, Card, GameState, PlayerState, Pos, Target, openCells, posKey, targetsFor,
 } from '../engine/game';
+import type { Floor } from '../engine/floors';
 import learnedAll from './learned.json';
 import presetsJson from './presets.json';
 
 export interface BotGenome {
-  /** 買う優先順（前ほど優先）と，それぞれ何枚まで持つか */
+  /** 取得する優先順（前ほど優先）と，それぞれ何枚まで持つか */
   buy: { kind: CardKind; cap: number }[];
   /** 残したい度合い（小さいほど先に排除する） */
   keep: Partial<Record<CardKind, number>>;
-  /** 所持枚数がこれ以下になったら仕上げモード（守っていたカードも消す・もう買わない） */
+  /** 所持枚数がこれ以下になったら仕上げモード（守っていたカードも消す・もう取得しない） */
   finish: number;
   /** 配置の評価の重み */
   wRemove: number;
@@ -22,26 +23,21 @@ export interface BotGenome {
   wDraw: number;
 }
 
-/**
- * プリセットの戦略．進化戦略で「使ってよいカード」を変えて別々に学習し，
- * 互いにほぼ互角（勝率倍率 0.83〜1.25）だった6つの系統（training/archetypes.ts）．
- */
 export const PRESETS: Record<string, BotGenome> = {
-  // 何も買わない（初期デッキだけで勝てるかの確認用．対戦相手には選ばない）
+  // 何も取得しない（初期デッキだけで勝てるかの確認用．対戦相手には選ばない）
   nobuy: {
-    buy: [], keep: { J: 0, R: 1, D: 3, RD: 4, X: 9 }, finish: 3, wRemove: 10, wBuy: 6, wDraw: 4,
+    buy: [], keep: { R: 1, U: 2, D: 3, J: 0 }, finish: 3, wRemove: 10, wBuy: 6, wDraw: 4,
   },
   ...(presetsJson as Record<string, BotGenome>),
 };
 
 export const BOT_LABELS: Record<string, string> = {
-  nobuy: '買わない型',
-  balanced: 'バランス型（台車・仕分け箱・ハブ・通路・紙袋）',
-  engine: 'エンジン型（ハブ・台車・通路．紙袋は買わない）',
-  passage: '通路型（台車・通路．ハブは買わない）',
-  hub: 'ハブ型（台車・ハブ．通路は買わない）',
-  bag: '紙袋型（ハブ・通路・仕分け箱・紙袋．台車は買わない）',
-  light: '身軽型（通路・紙袋だけ）',
+  nobuy: '取得しない型',
+  balanced: 'バランス型',
+  engine: 'エンジン型（＋で引くカードを集める）',
+  branch: '分岐型（仕分け箱・棚・エレベーター）',
+  rich: '高級型（レベル3を狙う）',
+  light: '身軽型（取得を少なく）',
   learned: '学習済み',
   random: 'ランダム',
 };
@@ -50,16 +46,16 @@ export const BOT_LABELS: Record<string, string> = {
 const LEARNED = learnedAll as Record<string, BotGenome>;
 
 export function learnedFor(floor: string): BotGenome | undefined {
-  return LEARNED[floor] ?? LEARNED.grow;
+  return LEARNED[floor] ?? LEARNED.standard;
 }
 
-export function genomeFor(botType: string | undefined, rand: () => number = Math.random, floor = 'grow'): BotGenome {
+export function genomeFor(botType: string | undefined, rand: () => number = Math.random, floor = 'standard'): BotGenome {
   if (botType === 'learned') {
     const g = learnedFor(floor);
     if (g) return g;
   }
   if (botType && PRESETS[botType] && botType !== 'nobuy') return PRESETS[botType];
-  // 指定なし・'random'・学習データが無い：買わない型以外のプリセットからランダム
+  // 指定なし・'random'・学習データが無い：取得しない型以外のプリセットからランダム
   const keys = Object.keys(PRESETS).filter(k => k !== 'nobuy');
   return PRESETS[keys[Math.floor(rand() * keys.length)]];
 }
@@ -75,88 +71,190 @@ function countKinds(cards: Card[]): Counts {
 }
 
 function protectedKinds(g: BotGenome): Set<CardKind> {
-  // 排除すると得をするカード（フリマ・ポイントカード）は守らない
-  return new Set(g.buy.filter(b => b.cap > 0 && !CARDS[b.kind].sell && !CARDS[b.kind].bonus).map(b => b.kind));
+  return new Set(g.buy.filter(b => b.cap > 0).map(b => b.kind));
 }
 
-const xCount = (cards: Card[]) => cards.reduce((s, c) => s + CARDS[c.kind].x, 0);
-/** 何手番続けて排除できていないか（行き詰まりの検出用） */
+function allCards(p: PlayerState): Card[] {
+  return [...p.deck, ...p.discard, ...p.hand, ...p.reserve, ...Object.values(p.board)];
+}
+
+function wanted(g: BotGenome, cnt: Counts, market: Record<CardKind, number>): boolean {
+  return g.buy.some(({ kind, cap }) => (cnt[kind] ?? 0) < cap && (market[kind] ?? 0) > 0);
+}
+
+/** 何手番続けて取得も排除もできていないか（行き詰まりの検出用） */
 const stall = new WeakMap<PlayerState, number>();
+const STALL_LIMIT = 3;
 
-/** 矢印のない（行き止まりになる）カードの数 */
-const deadEnds = (cards: Card[]) => cards.filter(c => isDeadEnd(c.kind)).length;
-/** 分岐（→と↓の両方）のカードの数 */
-const branches = (cards: Card[]) => cards.filter(c => isBranch(c.kind)).length;
+function isFinishing(g: BotGenome, p: PlayerState, market: Record<CardKind, number>): boolean {
+  const all = allCards(p);
+  // 欲しいカードに手が届かないまま止まっていたら，取得をあきらめて仕上げに入る
+  return all.length <= g.finish || !wanted(g, countKinds(all), market) || (stall.get(p) ?? 0) >= STALL_LIMIT;
+}
 
-function wantCost(g: BotGenome, cnt: Counts, market: Record<CardKind, number>): number {
-  let best = 0;
-  for (const { kind, cap } of g.buy) {
-    if ((cnt[kind] ?? 0) < cap && (market[kind] ?? 0) > 0) best = Math.max(best, CARDS[kind].cost);
+/** 取得の計画：優先順に，レベルと支払える額の範囲で */
+function planBuy(g: BotGenome, list: { kind: CardKind; cap: number }[], cnt: Counts, market: Record<CardKind, number>, t: Target): CardKind[] {
+  const buy: CardKind[] = [];
+  const c = { ...cnt }, m = { ...market };
+  let budget = t.budget;
+  for (;;) {
+    const pick = list.find(b => (c[b.kind] ?? 0) < b.cap && CARDS[b.kind].cost <= budget
+      && CARDS[b.kind].level <= t.level && (m[b.kind] ?? 0) > 0);
+    if (!pick) break;
+    buy.push(pick.kind);
+    c[pick.kind] = (c[pick.kind] ?? 0) + 1;
+    m[pick.kind]--;
+    budget -= CARDS[pick.kind].cost;
+  }
+  return buy;
+}
+
+/**
+ * 残りのカードを最後の1手番でまとめて消せるかの「借り」（0なら消せる見込み）．
+ * →の数だけ右へ，↓の数だけ下へ進んだマスを行き先にしたと考え，
+ * コストの合計が支払える額を超えた分と，レベルが足りない分と，↓がないことを数える
+ */
+export function finishDebt(rest: Card[], floor: Floor): number {
+  if (rest.length === 0) return 0;
+  const h = hardestNeeds(rest, floor);
+  const rights = rest.filter(c => CARDS[c.kind].moves.some(m => m[1] > 0)).length;
+  const downs = rest.filter(c => hasDown(c.kind)).length;
+  if (downs === 0) return 10 + rest.length;
+  const budget = floor.budgets[Math.min(rights, floor.cols - 1)];
+  const level = floor.levels[Math.min(floor.startRow + downs, floor.rows - 1)];
+  const cost = rest.reduce((n, c) => n + CARDS[c.kind].removeCost, 0);
+  const maxLevel = Math.max(...rest.map(c => CARDS[c.kind].level));
+  return Math.max(0, cost - budget) + 2 * Math.max(0, maxLevel + Math.min(0, level)) + 3 * h.deficit;
+}
+
+/**
+ * 一番消しにくいカード（レベル・コストが高い）を1枚だけ消すのに必要な↓（深さ）と→（支払える額）の数と，
+ * 手持ちでの不足（↓・→・1手番で置ける枚数）
+ */
+function hardestNeeds(rest: Card[], floor: Floor) {
+  const hardest = [...rest].sort((a, b) => CARDS[b.kind].level - CARDS[a.kind].level || CARDS[b.kind].removeCost - CARDS[a.kind].removeCost)[0];
+  const lv = Math.max(1, CARDS[hardest.kind].level);
+  const row = floor.levels.findIndex((l, r) => r > floor.startRow && -l >= lv);
+  const needDown = row < 0 ? 99 : row - floor.startRow;
+  const col = floor.budgets.findIndex(b => b >= CARDS[hardest.kind].removeCost);
+  const needRight = col < 0 ? 99 : col;
+  // そのカード自身の矢印も並びに使える（↓1枚なら自分の↓の先で自分を消せる）
+  const downs = rest.filter(c => hasDown(c.kind)).length;
+  const rights = rest.filter(c => CARDS[c.kind].moves.some(m => m[1] > 0)).length;
+  const draws = rest.reduce((n, c) => n + CARDS[c.kind].draw, 0);
+  // ↓と→の並び＋そのカード自身を，手札＋手元＋引く枚数で置けるか
+  const short = Math.max(0, needDown + needRight + 1 - (HAND_SIZE + RESERVE_SIZE + draws));
+  return {
+    needDown, needRight, downs, rights, short,
+    deficit: Math.max(0, needDown - downs) + Math.max(0, needRight - rights) + short,
+  };
+}
+
+/**
+ * 排除の計画：残したい度合いの低い順に，レベルと支払える額の範囲で．
+ * 仕上げ以外では，残りを最後にまとめて消しにくくなる排除（借りが増える）はしない．最後の↑も残す
+ */
+function planRemove(
+  g: BotGenome, field: Card[], owned: Card[], t: Target, floor: Floor, finishing: boolean, clearAll: boolean,
+): Card[] {
+  const prot = protectedKinds(g);
+  let rest = [...owned];
+  const order = field.filter(c => !CARDS[c.kind].selfRemove && CARDS[c.kind].level <= -t.level)
+    .sort((a, b) => (g.keep[a.kind] ?? 5) - (g.keep[b.kind] ?? 5) || CARDS[b.kind].removeCost - CARDS[a.kind].removeCost);
+  const res: Card[] = [];
+  let budget = t.budget;
+  for (const c of order) {
+    const cost = CARDS[c.kind].removeCost;
+    if (cost > budget) continue;
+    const after = rest.filter(x => x !== c);
+    if (!clearAll) {
+      if (!finishing && prot.has(c.kind)) continue;
+      if (hasUp(c.kind) && !finishing && !after.some(x => hasUp(x.kind))) continue; // 最後の↑を消すと，もう上の行で取得できない
+      if (finishDebt(after, floor) > finishDebt(rest, floor)) continue;
+    }
+    res.push(c);
+    budget -= cost;
+    rest = after;
+  }
+  return res;
+}
+
+/**
+ * 取得の候補（方針の優先順に，行き詰まり対策を足す）．
+ * 一番消しにくいカード（レベル・コストが高い）を消すのに，↓（深さ）と→（支払える額）が足りなければ基本カードを足す
+ */
+function buyList(g: BotGenome, rest: Card[], floor: Floor, finishing: boolean): { kind: CardKind; cap: number }[] {
+  const cnt = countKinds(rest);
+  const ups = rest.filter(c => hasUp(c.kind)).length;
+  const extra: { kind: CardKind; cap: number }[] = [];
+  if (rest.length) {
+    // その並びを1手番で置くのに，手札＋手元＋引く枚数が足りなければ，＋で引けるカードを優先する
+    const h = hardestNeeds(rest, floor);
+    const add = (kinds: CardKind[]) => kinds.forEach(k => extra.push({ kind: k, cap: (cnt[k] ?? 0) + 1 }));
+    if (h.downs < h.needDown && h.needDown < 99) add(h.short ? ['D+', 'D'] : ['D']);
+    else if (h.rights < h.needRight && h.needRight < 99) add(h.short ? ['R+', 'R'] : ['R']);
+    else if (h.short) add(['BAG', 'R+', 'D+', 'P']);
+  }
+  // ＋で引けるカードはレベル1以上の行でしか取得できないので，↑がなければ先に↑を取る
+  const needDraw = extra.some(e => CARDS[e.kind].draw > 0);
+  if ((!finishing || needDraw) && ups < 1) extra.unshift({ kind: 'U', cap: (cnt.U ?? 0) + 1 });
+  return [...extra, ...(finishing ? [] : g.buy)];
+}
+
+interface Choice { target?: Target; remove: Card[]; buy: CardKind[]; v: number }
+
+/** 場の状態から，行き先と取得・排除の一番よい組み合わせを選ぶ */
+function bestChoice(
+  g: BotGenome, state: GameState, p: PlayerState, placed: Record<string, Card>, unplaced: Card[], pend: number,
+): Choice {
+  const field = Object.values(placed);
+  const owned = allCards(p);
+  const finishing = isFinishing(g, p, state.market);
+  const auto = field.filter(c => CARDS[c.kind].selfRemove).length;
+  const removable = field.filter(c => !CARDS[c.kind].selfRemove);
+  // この手番で全部消せるか（山札・捨札・手札・手元が空で，場のカードを全部消せる）
+  const lastTurn = p.deck.length === 0 && p.discard.length === 0 && unplaced.length === 0 && pend === 0;
+  const rest = [...p.deck, ...p.discard, ...unplaced, ...removable];
+  let best: Choice = { remove: [], buy: [], v: g.wRemove * auto };
+  for (const t of targetsFor(placed, state.floor)) {
+    if (t.level < 0) {
+      const all = lastTurn ? planRemove(g, removable, owned, t, state.floor, true, true) : [];
+      if (lastTurn && all.length === removable.length) return { target: t, remove: all, buy: [], v: 1e6 };
+      const rem = planRemove(g, removable, owned, t, state.floor, finishing, false);
+      // 粗大ごみのような高いレベルのカードほど，消せる機会が少ないので価値を高く
+      const v = g.wRemove * (auto + rem.reduce((n, c) => n + 1 + 0.5 * CARDS[c.kind].level, 0));
+      if (v > best.v) best = { target: t, remove: rem, buy: [], v };
+    } else if (!finishing || finishDebt(rest, state.floor) > 0) {
+      // 仕上げ中は，行き詰まり対策の基本カードだけ
+      const buy = planBuy(g, buyList(g, rest, state.floor, finishing), countKinds(rest), state.market, t);
+      const v = g.wRemove * auto + g.wBuy * buy.reduce((n, k) => n + CARDS[k].cost, 0) + 0.1 * t.budget;
+      if (v > best.v) best = { target: t, remove: [], buy, v };
+    }
   }
   return best;
 }
 
-function allCards(p: PlayerState): Card[] {
-  return [...p.deck, ...p.discard, ...p.hand, ...Object.values(p.board)];
-}
-
-function isFinishing(g: BotGenome, p: PlayerState, market: Record<CardKind, number>): boolean {
-  const all = allCards(p);
-  return all.length <= g.finish || wantCost(g, countKinds(all), market) === 0;
-}
-
 // ---- 配置の計画 ----
 
-function evaluate(
-  g: BotGenome, state: GameState, p: PlayerState,
-  placed: Record<string, Card>, hand: Card[], pend: number, finishing: boolean,
-): number {
-  const field = Object.values(placed);
-  if (field.length === 0) return 0;
-  const reach = computeReach(placed, state.floor);
-  // 自分で消えるカードは捨欲を使わない
-  const free = field.filter(c => CARDS[c.kind].selfRemove).length;
-  const targets = (RULE.handRemove ? [...field, ...hand] : field).filter(c => !CARDS[c.kind].selfRemove);
-  const left = RULE.handRemove ? 0 : hand.length; // 排除できずに残るカード
-  const need = targets.reduce((n, c) => n + (reach.corner ? 1 : removeCost(c.kind)), 0);
-  if (p.deck.length === 0 && p.discard.length === 0 && left === 0 && pend === 0 && (reach.corner || reach.remove >= need)) {
-    return 1e6; // この手番で勝てる
-  }
-  const prot = protectedKinds(g);
-  // 捨欲で消せる枚数（安いものから．goal モードの粗大ごみは無制限のときだけ）
-  const costs = targets
-    .filter(c => (finishing || !prot.has(c.kind)) && (reach.corner || RULE.bulky !== 'goal' || !CARDS[c.kind].bulky))
-    .map(c => (reach.corner ? 1 : removeCost(c.kind)))
-    .sort((a, b) => a - b);
-  let rem = free, used = 0;
-  for (const c of costs) { if (used + c > reach.remove) break; used += c; rem++; }
-  const sell = field.reduce((n, c) => n + CARDS[c.kind].sell, 0);
-  const want = wantCost(g, countKinds([...p.deck, ...p.discard, ...targets]), state.market);
-  const buy = reach.buy + sell;
-  return g.wRemove * rem + g.wBuy * Math.min(buy, want) + 0.1 * buy + g.wDraw * pend;
-}
-
-/** 手札だけを見て次の一手を決める（＋で引くカードは未知として扱う）．置かないなら null */
+/** 手札と手元を見て次の一手を決める（＋で引くカードは未知として扱う）．置かないなら null */
 function planPlacement(g: BotGenome, state: GameState, p: PlayerState): { card: Card; pos: Pos } | null {
-  const finishing = isFinishing(g, p, state.market);
   const memo = new Map<string, number>();
   const placed: Record<string, Card> = { ...p.board };
 
   const dfs = (hand: Card[], pend: number): { v: number; move: { card: Card; pos: Pos } | null } => {
     const key = Object.entries(placed).map(([k, c]) => k + c.kind).sort().join('|')
       + '#' + hand.map(c => c.kind).sort().join(',') + '#' + pend;
-    let best = { v: evaluate(g, state, p, placed, hand, pend, finishing), move: null as { card: Card; pos: Pos } | null };
     if (memo.has(key)) return { v: memo.get(key)!, move: null };
+    let best = { v: bestChoice(g, state, p, placed, hand, pend).v + g.wDraw * pend, move: null as { card: Card; pos: Pos } | null };
     const seen = new Set<CardKind>();
-    const opens = openCells(placed, state.floor, p.removed);
+    const opens = openCells(placed, state.floor);
     for (const card of hand) {
       if (seen.has(card.kind)) continue;
       seen.add(card.kind);
       for (const pos of opens) {
         const k = posKey(pos);
         placed[k] = card;
-        const rest = hand.filter(c => c !== card);
-        const r = dfs(rest, pend + CARDS[card.kind].draw);
+        const r = dfs(hand.filter(c => c !== card), pend + CARDS[card.kind].draw);
         delete placed[k];
         if (r.v > best.v + 1e-9) best = { v: r.v, move: { card, pos } };
       }
@@ -164,90 +262,26 @@ function planPlacement(g: BotGenome, state: GameState, p: PlayerState): { card: 
     memo.set(key, best.v);
     return best;
   };
-  return dfs([...p.hand], 0).move;
+  return dfs([...p.hand, ...p.reserve], 0).move;
 }
 
-// ---- 手番終了（排除と購入） ----
+// ---- 手番終了 ----
 
 function planEndTurn(g: BotGenome, state: GameState, p: PlayerState): Action {
-  const reach = computeReach(p.board, state.floor);
-  let field = (RULE.handRemove ? [...Object.values(p.board), ...p.hand] : Object.values(p.board))
-    .filter(c => !CARDS[c.kind].selfRemove); // 自分で消えるカードは数えない
-  const need = field.reduce((n, c) => n + (reach.corner ? 1 : removeCost(c.kind)), 0);
-  const clearAll = p.deck.length === 0 && p.discard.length === 0 && (RULE.handRemove || p.hand.length === 0)
-    && (reach.corner || reach.remove >= need);
-  const finishing = isFinishing(g, p, state.market) || clearAll;
-  const prot = protectedKinds(g);
-  const order = [...field].sort((a, b) => (g.keep[a.kind] ?? 5) - (g.keep[b.kind] ?? 5));
-  const remove: number[] = [];
-  let points = reach.remove;
-  for (const c of order) {
-    const cost = reach.corner ? 1 : removeCost(c.kind);
-    if (cost > points) continue;
-    if (CARDS[c.kind].bulky && !reach.corner && RULE.bulky === 'goal') continue; // 無制限のときだけ
-    if (!clearAll) {
-      if (!finishing && prot.has(c.kind)) continue;
-      // 手札を排除できないルールでは，行き止まりのカードを置く場所（分岐）を残す
-      if (!RULE.handRemove && isBranch(c.kind)) {
-        const owned = [...p.deck, ...p.discard, ...p.hand, ...field];
-        if (deadEnds(owned) >= branches(owned)) continue;
-      }
-      if (CARDS[c.kind].x > 0) {
-        // 最後の✕は全部消せるとき以外は残す
-        const xs = xCount([...p.deck, ...p.discard, ...field]);
-        if (xs - CARDS[c.kind].x < 1) continue;
-      }
-    }
-    remove.push(c.id);
-    points -= cost;
-    field = field.filter(f => f !== c);
-  }
-  const buy: CardKind[] = [];
-  const handLeft = RULE.handRemove ? [] : p.hand; // 手札は排除できずに捨札へ
-  if (p.deck.length === 0 && p.discard.length === 0 && field.length === 0 && handLeft.length === 0) {
-    return { type: 'endTurn', remove, buy }; // 勝利目前なら買わない
-  }
-  const rest = [...p.deck, ...p.discard, ...field, ...handLeft];
-  const cnt = countKinds(rest);
-  let list = g.buy;
-  if (rest.length <= g.finish || wantCost(g, cnt, state.market) === 0) list = [];
-  // 粗大ごみが残っているのに消す手段が足りないなら補う
-  if (rest.some(c => CARDS[c.kind].bulky) && !rest.some(c => CARDS[c.kind].goal)) {
-    const draws = rest.reduce((n, c) => n + CARDS[c.kind].draw, 0);
-    const downs = rest.filter(c => CARDS[c.kind].moves.some(m => m[0] > 0)).length;
-    const arrows = rest.filter(c => !isDeadEnd(c.kind)).length;
-    list = [
-      // goal モード：ゴミ収集車か，ゴミ捨て場まで伸ばすための＋が要る
-      ...(RULE.bulky === 'goal' ? [{ kind: 'TRK' as CardKind, cap: 1 }] : []),
-      ...(RULE.bulky === 'goal' && draws < 3 ? [{ kind: 'D+' as CardKind, cap: 2 }, { kind: 'R+' as CardKind, cap: 2 }] : []),
-      ...list,
-      // 矢印のないカード（粗大ごみ・ゴミ袋など）を全部置くには分岐が要る（手札は排除できないため）
-      ...(!RULE.handRemove && deadEnds(rest) > branches(rest) + 1
-        ? [{ kind: 'RD' as CardKind, cap: deadEnds(rest) - 1 }, { kind: 'RD2' as CardKind, cap: 1 }] : []),
-      // 矢印のカード（特に↓）が足りなければ基本カードを買い足す（行き詰まり防止）
-      ...(downs < 1 ? [{ kind: 'D' as CardKind, cap: 1 }] : []),
-      ...(arrows < (RULE.bulky === 'goal' ? 4 : 2) ? [{ kind: 'R' as CardKind, cap: 2 }, { kind: 'D' as CardKind, cap: 2 }] : []),
-    ];
-  }
-  // 行き詰まり対策：2手番続けて何も排除できていなければ，↓と分岐を買い足す
-  const turns = remove.length > 0 ? 0 : (stall.get(p) ?? 0) + 1;
-  stall.set(p, turns);
-  if (turns >= 2) {
-    list = [{ kind: 'D', cap: (cnt.D ?? 0) + 1 }, { kind: 'RD', cap: (cnt.RD ?? 0) + 1 }, ...list];
-  }
-  const market = { ...state.market };
-  // フリマなど，排除すると物欲が増えるカード
-  const sold = Object.values(p.board).filter(c => remove.includes(c.id)).reduce((n, c) => n + CARDS[c.kind].sell, 0);
-  let budget = reach.buy + sold;
-  for (;;) {
-    const pick = list.find(b => (cnt[b.kind] ?? 0) < b.cap && CARDS[b.kind].cost <= budget && (market[b.kind] ?? 0) > 0);
-    if (!pick) break;
-    buy.push(pick.kind);
-    cnt[pick.kind] = (cnt[pick.kind] ?? 0) + 1;
-    market[pick.kind]--;
-    budget -= CARDS[pick.kind].cost;
-  }
-  return { type: 'endTurn', remove, buy };
+  const unplaced = [...p.reserve, ...p.hand];
+  const c = bestChoice(g, state, p, p.board, unplaced, 0);
+  const progress = c.remove.length > 0 || c.buy.length > 0 || Object.values(p.board).some(x => CARDS[x.kind].selfRemove);
+  stall.set(p, progress ? 0 : (stall.get(p) ?? 0) + 1);
+  // 手元に残す：粗大ごみ（消せる手番まで場に出さない）＞ ＋で引くカード ＞ ↓のカード
+  const score = (x: Card) => (CARDS[x.kind].bulky ? 3 : CARDS[x.kind].draw > 0 ? 2 : hasDown(x.kind) ? 1 : 0);
+  const keep = [...unplaced].sort((a, b) => score(b) - score(a))[0];
+  return {
+    type: 'endTurn',
+    target: c.target?.pos,
+    remove: c.remove.map(x => x.id),
+    buy: c.buy,
+    keep: keep && score(keep) > 0 ? keep.id : null,
+  };
 }
 
 /** ボットの次のアクション．手番が終わるまで繰り返し呼ぶ */

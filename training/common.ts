@@ -1,13 +1,13 @@
 // 学習・評価で共有する部分：ゲノムのベクトル化と，対戦による評価
 
-import { CardKind, MARKET_KINDS } from '../src/engine/cards';
+import { CardKind, MARKET_KINDS, STARTING_DECK } from '../src/engine/cards';
 import { DEFAULT_FLOOR } from '../src/engine/floors';
 import { GameOptions } from '../src/engine/game';
 import { BotGenome, PRESETS } from '../src/bot/bot';
 import { playBotGame } from '../src/bot/runner';
 
 // ---- ゲノム <-> 数値ベクトル ----
-// 市場の各種類について [優先度, 上限枚数, 残したい度]，初期カード2種の残したい度，
+// 市場の各種類について [優先度, 上限枚数, 残したい度]，市場に無い初期カード（粗大ごみ）の残したい度，
 // 仕上げ閾値，評価の重み3つ
 
 // 実験用：市場の種類を変える（環境変数 MARKET_DROP="TRK"，MARKET_ADD="ST,CUT"）
@@ -19,7 +19,10 @@ for (const k of (process.env.MARKET_ADD ?? '').split(',').filter(Boolean)) {
   if (!MARKET_KINDS.includes(k as CardKind)) MARKET_KINDS.push(k as CardKind);
 }
 
-export const VEC_LEN = MARKET_KINDS.length * 3 + 2 + 4;
+/** 市場に無い初期カード（残したい度だけを学習する） */
+const EXTRA_KEEP: CardKind[] = [...new Set(STARTING_DECK.map(d => d.kind))].filter(k => !MARKET_KINDS.includes(k));
+
+export const VEC_LEN = MARKET_KINDS.length * 3 + EXTRA_KEEP.length + 4;
 
 export function encode(g: BotGenome): number[] {
   const v: number[] = [];
@@ -29,7 +32,7 @@ export function encode(g: BotGenome): number[] {
     v.push(i >= 0 ? g.buy[i].cap : 0); // 上限
     v.push(g.keep[k] ?? 5);
   }
-  v.push(g.keep.R ?? 1, g.keep.D ?? 3);
+  for (const k of EXTRA_KEEP) v.push(g.keep[k] ?? 0);
   v.push(g.finish, g.wRemove, g.wBuy, g.wDraw);
   return v;
 }
@@ -43,16 +46,15 @@ export function decode(v: number[]): BotGenome {
     if (cap > 0) buy.push({ kind: k, cap, pr });
   });
   buy.sort((a, b) => b.pr - a.pr);
-  const o = MARKET_KINDS.length * 3;
-  keep.R = round2(v[o]);
-  keep.D = round2(v[o + 1]);
+  let o = MARKET_KINDS.length * 3;
+  for (const k of EXTRA_KEEP) keep[k] = round2(v[o++]);
   return {
     buy: buy.map(({ kind, cap }) => ({ kind, cap })),
     keep,
-    finish: Math.max(0, Math.min(8, Math.round(v[o + 2]))),
-    wRemove: round2(Math.max(0, v[o + 3])),
-    wBuy: round2(Math.max(0, v[o + 4])),
-    wDraw: round2(Math.max(0, v[o + 5])),
+    finish: Math.max(0, Math.min(8, Math.round(v[o]))),
+    wRemove: round2(Math.max(0, v[o + 1])),
+    wBuy: round2(Math.max(0, v[o + 2])),
+    wDraw: round2(Math.max(0, v[o + 3])),
   };
 }
 
@@ -62,7 +64,8 @@ const round2 = (x: number) => Math.round(x * 100) / 100;
 export function scales(): number[] {
   const s: number[] = [];
   for (let i = 0; i < MARKET_KINDS.length; i++) s.push(3, 0.8, 2);
-  s.push(2, 2, 1, 2, 2, 2);
+  for (let i = 0; i < EXTRA_KEEP.length; i++) s.push(2);
+  s.push(1, 2, 2, 2);
   return s;
 }
 
