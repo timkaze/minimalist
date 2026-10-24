@@ -48,10 +48,12 @@ export const FLOORS: Record<string, Floor> = {
   standard: parseFloor('standard', '標準（9行×8列）', open(9, 8), [3, 2, 2, 1, 0, -1, -2, -2, -3]),
   // 小さい部屋：レベル2まで．入門・短時間向け
   small: parseFloor('small', '小さい部屋（7行×6列・レベル2まで）', open(7, 6), [2, 2, 1, 0, -1, -2, -2]),
+  // 構築向け：標準と同じ形で，支払える額の増え方を遅く（1,1,2,2,3,3,4,4）．取得しないと勝ちにくい
+  slow: parseFloor('slow', '構築向け（支払い1,1,2,2,3,3,4,4）', open(9, 8), [3, 2, 2, 1, 0, -1, -2, -2, -3], [1, 1, 2, 2, 3, 3, 4, 4]),
 };
 
 /** 画面で選べるおすすめの間取り（先頭が既定） */
-export const RECOMMENDED_FLOORS = ['standard', 'small'];
+export const RECOMMENDED_FLOORS = ['standard', 'small', 'slow'];
 
 export const DEFAULT_FLOOR = 'standard';
 
