@@ -59,6 +59,15 @@ Cloudflare Workers の無料プランで動きます（1日10万リクエスト�
 - 最初の push の後，Actions タブで再実行するか，もう一度 push してください（シークレット登録前の実行は失敗します）
 - 公開 URL：`https://minimalist-online.<サブドメイン>.workers.dev`
 
+#### 試験用の公開（test ブランチ）
+本番に出す前に試したい変更は `test` ブランチに push すると，別の Worker `minimalist-online-test` にデプロイされます（`https://minimalist-online-test.<サブドメイン>.workers.dev`）．部屋のデータは本番と別なので，本番の対戦には影響しません．
+```bash
+git switch -c test        # 初回（2回目からは git switch test）
+git merge 作業ブランチ     # 試したい変更を取り込む
+git push -u origin test
+```
+よければ main にマージして push すると本番に出ます．Actions の「Run workflow」も main・test 以外のブランチではデプロイしません．
+
 GitHub を使わずに手元から直接公開することもできます：
 ```bash
 npx wrangler login
