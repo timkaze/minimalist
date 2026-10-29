@@ -1,10 +1,10 @@
 // スライド版の試作画面（ローカルでボットと遊ぶ．オンライン対戦はまだない）
 
 import './ui.css';
-import { ARROW, DELTA, DIRS, Dir, SCARDS, SKind } from './cards';
+import { ARROW, DELTA, DIRS, Dir, SCARDS, SKind, canBuyAt, canDropAt, needText } from './cards';
 import {
   DEFAULT_BOARD, SBOARDS, SCard, SPlayer, SState, Walk, X_MAX, X_MIN, applySlide, bonus, brake, canAdjust, canPeek, cellPower,
-  choicesFor, favCost, inBoard, isCatch, isDeep, newSlideGame, overshoot, ownedCards, removeLoad, rowEffect, samePos, stopperCells, yMax, yMin,
+  canFlip, choicesFor, favCost, isLastCard, inBoard, isCatch, isDeep, newSlideGame, overshoot, ownedCards, removeLoad, rowEffect, samePos, stopperCells, yMax, yMin,
 } from './engine';
 import { SBOT_LABELS, SPRESETS, chooseSlideAction } from './bot';
 import { randomSeed } from '../engine/rng';
@@ -57,10 +57,13 @@ function setup() {
 
 function rulesHTML() {
   return `<ul>
-    <li>毎手番，コマは中央から．少なくとも1枚めくる．山札が尽きたら止めるしかない（次の手番の最初に捨札を混ぜる）</li>
+    <li>毎手番，コマは中央から．少なくとも1枚めくる．山札が尽きたら捨札を混ぜてめくり続けられる</li>
     <li>縦：中央から上が<b>物欲</b>（その行の額まで取得），下が<b>捨欲</b>（その行の量まで排除．一番下は捨札からも1枚）．額・量は盤の左に書いてある</li>
-    <li>横：右ほど<b>衝動</b>．止めると最後に動いた向きへ1/2マス余分に進む（衝動3はぶつかるまで）が，額・量が+1/+2/+3．
-      左ほど<b>理性</b>．理性2以上は止めた後に1マス動ける，理性3は次の1枚が見える</li>
+    <li>横：右ほど<b>衝動</b>．止めると最後に動いた向きへ1/2マス余分に進む（衝動3はぶつかるまで）が，取得の額が+1/+2/+3．
+      左ほど<b>理性</b>．排除の量が+1/+2/+3．理性2以上は止めた後に1マス動ける，理性3は次の1枚が見える</li>
+    <li>高いもの・派手なもの（滑り台・一生モノ・愛用品・氷の廊下・道連れ袋）は<b>衝動の列でないと取得できない</b>．
+      思い入れのあるもの（ガラクタ・思い出の品・愛用品・滑り台）は<b>理性の列でないと排除できない</b></li>
+    <li>最後の1枚（持ち物が今日めくった1枚だけ）は，どこで止まっても手放せる</li>
     <li>排除できるのは今日めくったカード（重さの合計が量以下）．排除したマスに<b>積み木</b>（片付けた跡）が残る．
       積み木のマスに入ると，そのカードの動きはそこで終わる（1人4個，古いものから動かす）</li>
     <li>お気に入り（一生モノ・回した愛用品）は排除できない．お気に入りだけ3枚以下になっても達成</li>
@@ -90,7 +93,7 @@ function boardHTML(p: SPlayer, big: boolean, clickCells: { x: number; y: number 
   const w = p.walk;
   const active = s!.players[s!.current] === p;
   let h = `<div class="board ${big ? 'big' : 'mini'}"><div class="corner"></div>`;
-  for (let x = X_MIN; x <= X_MAX; x++) h += `<div class="colh ${x > 0 ? 'imp' : x < 0 ? 'calm' : ''}">${big ? colLabel(x) : x}${big && x > 0 ? `<small>+${bonus(x)}・${overshoot(x) === Infinity ? '滑る' : overshoot(x) + '余分'}</small>` : ''}${big && x <= -2 ? `<small>${canPeek(x) ? '1枚見える' : ''}${canAdjust(x) ? '・1マス調整' : ''}</small>` : ''}</div>`;
+  for (let x = X_MIN; x <= X_MAX; x++) h += `<div class="colh ${x > 0 ? 'imp' : x < 0 ? 'calm' : ''}">${big ? colLabel(x) : x}${big && x > 0 ? `<small>額+${bonus(x, 'buy')}・${overshoot(x) === Infinity ? '滑る' : overshoot(x) + '余分'}</small>` : ''}${big && x < 0 ? `<small>量+${bonus(x, 'remove')}${canAdjust(x) ? '・調整' : ''}${canPeek(x) ? '・見る' : ''}</small>` : ''}</div>`;
   const b = s!.board;
   for (let y = yMax(b); y >= yMin(b); y--) {
     const e = rowEffect(y, b);
@@ -119,6 +122,7 @@ function cardHTML(c: SCard | { kind: SKind; fav?: boolean; id?: number }, extra 
   return `<div class="card ${cls} ${fav ? 'favc' : ''} ${d.cost === null ? 'startc' : ''}" ${'id' in c && c.id ? `data-id="${c.id}"` : ''} ${extra}>
     <div class="ct"><b>${fav ? '★' : ''}${d.name}</b>${d.cost !== null ? `<span class="cost">${d.cost}</span>` : ''}</div>
     <div class="cm">${esc(fav ? 'お気に入り．好きな向きに1' : d.text)}</div>
+    ${needText(c.kind) && !fav ? `<div class="need">${needText(c.kind)}</div>` : ''}
     <div class="cw">重さ${d.weight}</div></div>`;
 }
 
@@ -180,13 +184,13 @@ function ownedList(p: SPlayer) {
     .map(({ c, n }) => `<span class="chip ${c.fav ? 'favc' : ''}" title="${esc(moveText(c))}">${c.fav ? '★' : ''}${SCARDS[c.kind].name}×${n}</span>`).join('');
 }
 
-function marketHTML(buying: boolean) {
+function marketHTML(buying: boolean, x = 0) {
   return Object.entries(s!.market).map(([k, n]) => {
     const kind = k as SKind;
     const chosen = sel.buy.filter(x => x === kind).length;
     const left = (n ?? 0) - chosen;
     return `<div class="mk">${cardHTML({ kind }, buying ? `data-buy="${kind}"` : '')}
-      <div class="stock">${n! >= 99 ? '∞' : `残り${n}`}${buying ? ` <button data-add="${kind}" ${left <= 0 ? 'disabled' : ''}>＋</button><button data-sub="${kind}" ${chosen ? '' : 'disabled'}>−</button> ${chosen ? `<b>×${chosen}</b>` : ''}` : ''}</div></div>`;
+      <div class="stock">${n! >= 99 ? '∞' : `残り${n}`}${buying ? ` <button data-add="${kind}" ${left <= 0 || !canBuyAt(kind, x) ? 'disabled' : ''}>＋</button><button data-sub="${kind}" ${chosen ? '' : 'disabled'}>−</button> ${chosen ? `<b>×${chosen}</b>` : ''}` : ''}</div></div>`;
   }).join('');
 }
 
@@ -209,8 +213,8 @@ function controlsHTML(): string {
       const where = !p.flow.length ? '少なくとも1枚めくってください'
         : `止めると (${pv.pos.x},${pv.pos.y}) ${pw.kind === 'buy' ? `物欲${pw.amount}で取得` : pw.kind === 'remove' ? `捨欲${pw.amount}で排除` : 'で何もしない'}${samePos(pv.pos, w.pos) ? '' : '（勢いで進む）'}`;
       return `${peek}<p>${where}</p>
-        <button id="flip" class="primary" ${p.deck.length ? '' : 'disabled'}>めくる（山札${p.deck.length}）</button>
-        <button id="stop" ${!p.flow.length && p.deck.length ? 'disabled' : ''}>止める</button>`;
+        <button id="flip" class="primary" ${canFlip(p) ? '' : 'disabled'}>めくる（山札${p.deck.length}${p.deck.length ? '' : '→捨札を混ぜる'}）</button>
+        <button id="stop" ${!p.flow.length && canFlip(p) ? 'disabled' : ''}>止める</button>`;
     }
     case 'branch': {
       const card = p.flow[p.flow.length - 1];
@@ -222,11 +226,15 @@ function controlsHTML(): string {
       return `<p>理性の列で止まりました．1マスだけ動けます（光っているマス）．今の場所：${here.kind === 'buy' ? `物欲${here.amount}` : here.kind === 'remove' ? `捨欲${here.amount}` : '効果なし'}</p>
         <button id="noadjust" class="primary">ここでよい</button>`;
     case 'resolve': {
+      if (isLastCard(p)) {
+        return `<p>最後の1枚です．どこで止まっても手放せます</p>${cardHTML(p.flow[0])}
+          <button id="lastdrop" class="primary">手放す</button> <button id="resolve">手放さない</button>`;
+      }
       if (here.kind === 'buy') {
         const total = sel.buy.reduce((n, k) => n + (SCARDS[k].cost ?? 0), 0);
         const rot = p.flow.filter(c => SCARDS[c.kind].rotatable && !c.fav);
         return `<p>物欲 <b>${here.amount}</b>：取得するカードを選んでください（使用 ${total}/${here.amount}）</p>
-          <div class="market buying">${marketHTML(true)}</div>
+          <div class="market buying">${marketHTML(true, w.pos.x)}</div>
           ${rot.length ? `<p>愛用品を回してお気に入りにする：${rot.map(c => `<label><input type="checkbox" data-rot="${c.id}" ${sel.rotate.has(c.id) ? 'checked' : ''}>愛用品</label>`).join(' ')}</p>` : ''}
           <button id="resolve" class="primary" ${total > here.amount ? 'disabled' : ''}>決定</button>`;
       }
@@ -236,8 +244,8 @@ function controlsHTML(): string {
         const deep = isDeep(w.pos.y, st.board);
         const discSel = p.discard.filter(c => sel.remove.has(c.id));
         return `<p>捨欲 <b>${here.amount}</b>：今日の流れから排除するカードを選んでください（重さ ${load}/${here.amount}）</p>
-          <div class="flow pickable">${p.flow.map(c => cardHTML(c, `data-rm="${c.id}"`, sel.remove.has(c.id) ? 'on' : '')).join('')}</div>
-          ${deep ? `<p>捨欲3：捨札からも1枚（重さ0）</p><div class="flow pickable">${p.discard.filter(c => !c.fav).map(c => cardHTML(c, `data-rm="${c.id}"`, sel.remove.has(c.id) ? 'on' : '')).join('') || '<span class="muted">捨札はありません</span>'}</div>` : ''}
+          <div class="flow pickable">${p.flow.map(c => canDropAt(c.kind, w.pos.x) && !c.fav ? cardHTML(c, `data-rm="${c.id}"`, sel.remove.has(c.id) ? 'on' : '') : cardHTML(c, '', 'no')).join('')}</div>
+          ${deep ? `<p>捨欲3：捨札からも1枚（重さ0）</p><div class="flow pickable">${p.discard.filter(c => !c.fav && canDropAt(c.kind, w.pos.x)).map(c => cardHTML(c, `data-rm="${c.id}"`, sel.remove.has(c.id) ? 'on' : '')).join('') || '<span class="muted">捨札はありません</span>'}</div>` : ''}
           <button id="resolve" class="primary" ${load > here.amount || discSel.length > 1 ? 'disabled' : ''}>決定</button>`;
       }
       return `<p>効果のないマスで止まりました</p><button id="resolve" class="primary">手番を終える</button>`;
@@ -289,6 +297,7 @@ function bindControls(clickCells: { x: number; y: number }[]) {
     if (sel.remove.has(id)) sel.remove.delete(id); else sel.remove.add(id);
     render();
   });
+  q('#lastdrop')?.addEventListener('click', () => act({ type: 'resolve', buy: [], remove: [cur().flow[0].id], rotate: [] }));
   q('#resolve')?.addEventListener('click', () => act({ type: 'resolve', buy: [...sel.buy], remove: [...sel.remove], rotate: [...sel.rotate] }));
 }
 

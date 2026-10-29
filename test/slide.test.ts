@@ -12,7 +12,7 @@ const card = (kind: keyof typeof SCARDS, id = 900, fav = false) => ({ id, kind, 
 /** 現在の手番の人の山札の上を，指定のカードにする */
 function stack(s: SState, ...kinds: (keyof typeof SCARDS)[]) {
   const p = s.players[s.current];
-  p.deck = kinds.map((k, i) => card(k, 500 + i)).reverse();
+  p.deck = kinds.map(k => card(k, s.nextId++)).reverse();
 }
 
 describe('スライド版', () => {
@@ -58,16 +58,18 @@ describe('スライド版', () => {
     expect(cellPower({ x: 2, y: 3 }, SHORT)).toEqual({ kind: 'buy', amount: 6 });
     expect(cellPower({ x: 0, y: 0 }, SHORT).kind).toBe('none');
     expect(cellPower({ x: 0, y: -1 }, SHORT)).toEqual({ kind: 'remove', amount: 1 });
-    expect(cellPower({ x: 1, y: -4 }, SHORT)).toEqual({ kind: 'remove', amount: 4 });
+    expect(cellPower({ x: 1, y: -4 }, SHORT)).toEqual({ kind: 'remove', amount: 3 }); // 衝動は取得だけ
+    expect(cellPower({ x: -2, y: -1 }, SHORT)).toEqual({ kind: 'remove', amount: 3 }); // 理性は排除だけ
+    expect(cellPower({ x: -2, y: 1 }, SHORT)).toEqual({ kind: 'buy', amount: 2 });
     // ゆっくり：物欲 1,1,2,2,3,3,4／捨欲 0,1,1,2,3
     expect([1, 2, 3, 4, 5, 6, 7].map(y => cellPower({ x: 0, y }, STD).amount)).toEqual([1, 1, 2, 2, 3, 3, 4]);
     expect([-1, -2, -3, -4, -5].map(y => cellPower({ x: 0, y }, STD).amount)).toEqual([0, 1, 1, 2, 3]);
-    expect(cellPower({ x: 2, y: -1 }, STD)).toEqual({ kind: 'remove', amount: 2 }); // 捨欲0でも衝動2なら2
+    expect(cellPower({ x: -2, y: -1 }, STD)).toEqual({ kind: 'remove', amount: 2 }); // 捨欲0でも理性2なら2
   });
 
   it('道連れ袋は，もう1枚を重さ0にする', () => {
-    expect(removeLoad([card('DRAG', 1), card('JUNK', 2)])).toBe(1);
-    expect(removeLoad([card('DOWN', 1), card('JUNK', 2)])).toBe(3);
+    expect(removeLoad([card('DRAG', 1), card('DOWN2', 2)])).toBe(1);
+    expect(removeLoad([card('DOWN', 1), card('DOWN2', 2)])).toBe(2);
   });
 
   it('取得は物欲の行で，排除は今日の流れから，排除したマスに積み木が残る', () => {
@@ -83,18 +85,54 @@ describe('スライド版', () => {
     if (s.turn === 'adjust') applySlide(s, 1, { type: 'adjust', dir: null });
     applySlide(s, 1, { type: 'resolve', buy: [], remove: [], rotate: [] });
 
-    stack(s, 'SLIDE', 'JUNK');
-    applySlide(s, 0, { type: 'flip' });
-    applySlide(s, 0, { type: 'flip' });
+    stack(s, 'DOUBT', 'SLIDE', 'JUNK');
+    for (let i = 0; i < 3; i++) applySlide(s, 0, { type: 'flip' });
     applySlide(s, 0, { type: 'stop' });
     const p = s.players[0];
-    expect(p.walk.pos).toEqual({ x: 0, y: -4 });
-    const junk = p.flow.find(c => c.kind === 'JUNK')!;
-    const fromDiscard = p.discard.find(c => !c.fav)!;
-    expect(() => applySlide(s, 0, { type: 'resolve', buy: [], remove: [junk.id, fromDiscard.id, p.discard[1].id], rotate: [] })).toThrow();
-    applySlide(s, 0, { type: 'resolve', buy: [], remove: [junk.id, fromDiscard.id], rotate: [] });
-    expect(p.removed).toBe(2);
-    expect(p.walk.blocks).toEqual([{ x: 0, y: -4 }]);
+    expect(p.walk.pos).toEqual({ x: -1, y: -4 }); // 理性1・一番下：量 3+1
+    const ids = p.flow.map(c => c.id); // 迷い1・滑り台1・ガラクタ2 = 4
+    const fromDiscard = p.discard.filter(c => !c.fav);
+    expect(() => applySlide(s, 0, { type: 'resolve', buy: [], remove: [...ids, fromDiscard[0].id, fromDiscard[1].id], rotate: [] })).toThrow();
+    applySlide(s, 0, { type: 'resolve', buy: [], remove: [...ids, fromDiscard[0].id], rotate: [] });
+    expect(p.removed).toBe(4);
+    expect(p.walk.blocks).toEqual([{ x: -1, y: -4 }]);
+  });
+
+  it('衝動の列でしか取得できないカード・理性の列でしか排除できないカードがある', () => {
+    const s = newSlideGame([{ name: 'A' }, { name: 'B' }], 4, { board: 'basic' });
+    stack(s, 'UP2', 'JUNK');
+    applySlide(s, 0, { type: 'flip' });
+    applySlide(s, 0, { type: 'flip' });
+    applySlide(s, 0, { type: 'stop' }); // (0,2) 物欲3
+    expect(() => applySlide(s, 0, { type: 'resolve', buy: ['ICE'], remove: [], rotate: [] })).toThrow(/衝動1/);
+    applySlide(s, 0, { type: 'resolve', buy: ['DOWN2'], remove: [], rotate: [] });
+    applySlide(s, 1, { type: 'flip' }); applySlide(s, 1, { type: 'stop' });
+    if (s.turn === 'adjust') applySlide(s, 1, { type: 'adjust', dir: null });
+    applySlide(s, 1, { type: 'resolve', buy: [], remove: [], rotate: [] });
+    stack(s, 'JUNK', 'DOWN2');
+    applySlide(s, 0, { type: 'flip' });
+    applySlide(s, 0, { type: 'flip' });
+    applySlide(s, 0, { type: 'stop' }); // (0,-2) 捨欲2，理性0
+    const junk = s.players[0].flow.find(c => c.kind === 'JUNK')!;
+    expect(() => applySlide(s, 0, { type: 'resolve', buy: [], remove: [junk.id], rotate: [] })).toThrow(/理性1/);
+  });
+
+  it('最後の1枚は，どこで止まっても手放せる．山札が尽きたら捨札を混ぜて続けられる', () => {
+    const s = newSlideGame([{ name: 'A' }], 5, { board: 'basic' });
+    const p = s.players[0];
+    p.deck = [card('JUNK', 1)];
+    applySlide(s, 0, { type: 'flip' });
+    applySlide(s, 0, { type: 'stop' });
+    applySlide(s, 0, { type: 'resolve', buy: [], remove: [1], rotate: [] });
+    expect(p.finished).toBe(true);
+    const t = newSlideGame([{ name: 'A' }], 6);
+    const q = t.players[0];
+    q.deck = [card('WANT', 801)];
+    q.discard = [card('DOUBT', 802), card('WANT', 803)];
+    applySlide(t, 0, { type: 'flip' });
+    applySlide(t, 0, { type: 'flip' }); // 山札が空 → 捨札を混ぜる
+    expect(q.flow.length).toBe(2);
+    expect(q.deck.length + q.discard.length).toBe(1);
   });
 
   it('お気に入りだけ3枚以下になったら達成．お気に入りは排除できない', () => {

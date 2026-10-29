@@ -66,6 +66,8 @@ header #quit { margin-left: auto; }
 .card .ct { display: flex; justify-content: space-between; gap: 4px; font-size: 12px; }
 .card .cost { border: 1px solid var(--ink); border-radius: 50%; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; flex: none; }
 .card .cm { flex: 1; }
+.card .need { color: var(--imp); font-size: 10px; }
+.card.no { opacity: 0.45; }
 .card .cw { color: var(--rm); text-align: right; }
 .mk { display: flex; flex-direction: column; gap: 3px; }
 .mk .stock { font-size: 11px; color: var(--muted); display: flex; gap: 4px; align-items: center; }

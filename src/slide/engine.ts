@@ -3,7 +3,7 @@
 //   手番：めくる（コマが動く）か止めるかを繰り返し，止まったマスで取得か排除をする
 //   積み木（片付けた跡・ストッパー）：そのマスに入ると，そのカードの動きはそこで終わる
 
-import { DELTA, Dir, FAV_MOVE, LIGHT_PER, MEMO_AT, Move, SCARDS, SKind, STARTING, UNLIMITED_KINDS, MARKET } from './cards';
+import { DELTA, Dir, FAV_MOVE, canBuyAt, canDropAt, LIGHT_PER, MEMO_AT, Move, SCARDS, SKind, STARTING, UNLIMITED_KINDS, MARKET } from './cards';
 import { shuffle } from '../engine/rng';
 
 export const X_MIN = -3, X_MAX = 3;
@@ -36,8 +36,8 @@ export function rowEffect(y: number, b: SBoard): { kind: 'buy' | 'remove' | 'non
   if (y <= -1) return { kind: 'remove', amount: b.remove[-y - 1] };
   return { kind: 'none', amount: 0 };
 }
-/** 列の上乗せ（衝動の側だけ） */
-export const bonus = (x: number) => Math.max(0, x);
+/** 列の上乗せ：衝動の列は取得の額に，理性の列は排除の量に（衝動買い／冷静な片付け） */
+export const bonus = (x: number, kind: 'buy' | 'remove') => (kind === 'buy' ? Math.max(0, x) : Math.max(0, -x));
 /** 止めたとき余分に進む歩数（衝動3はぶつかるまで） */
 export const overshoot = (x: number) => (x >= 3 ? Infinity : Math.max(0, x));
 /** 止めたあと1マス動いてよいか（理性2以上） */
@@ -104,6 +104,7 @@ export function applyMove(card: SCard, w: Walk, removed: number, dir?: Dir, cell
     case 'slide': walk(w, m.dir, Infinity); return false;
     case 'stopper': if (cell) addBlock(w.blocks, cell); return false;
     case 'none': return false;
+    case 'path': for (const d of m.dirs) walk(w, d, 1); return false;
     case 'swing':
       if (w.pos.y >= 1) walk(w, 'D', 2);
       else if (w.pos.y <= -1) walk(w, 'U', 1);
@@ -186,6 +187,8 @@ export function newSlideGame(
 }
 
 export const ownedCards = (p: SPlayer) => [...p.deck, ...p.discard, ...p.flow];
+/** 最後の1枚：持ち物が今日の流れの1枚（お気に入りでない）だけ */
+export const isLastCard = (p: SPlayer) => !p.deck.length && !p.discard.length && p.flow.length === 1 && !p.flow[0].fav;
 /** 達成：カードが0枚，またはお気に入りだけで FINISH_FAVS 枚以下 */
 export const isDone = (p: SPlayer) => { const o = ownedCards(p); return o.length <= FINISH_FAVS && o.every(c => c.fav) || o.length === 0; };
 export const favCost = (p: SPlayer) => ownedCards(p).filter(c => c.fav).reduce((n, c) => n + (SCARDS[c.kind].cost ?? 0), 0);
@@ -193,7 +196,7 @@ export const favCost = (p: SPlayer) => ownedCards(p).filter(c => c.fav).reduce((
 /** 止まったマスの効果の額・量（上乗せ込み） */
 export function cellPower(pos: Pos, b: SBoard): { kind: 'buy' | 'remove' | 'none'; amount: number } {
   const e = rowEffect(pos.y, b);
-  return e.kind === 'none' ? e : { kind: e.kind, amount: e.amount + bonus(pos.x) };
+  return e.kind === 'none' ? e : { kind: e.kind, amount: e.amount + bonus(pos.x, e.kind) };
 }
 
 /** 排除の重さの合計（道連れ袋1枚につき，ほかの1枚の重さを0にできる．重いものから） */
@@ -212,8 +215,9 @@ export function applySlide(s: SState, seat: number, a: SAction): void {
   switch (a.type) {
     case 'flip': {
       if (s.turn !== 'move') throw new SRuleError('今はめくれません');
+      if (!p.deck.length) reshuffle(s, p); // 山札が尽きたら捨札を混ぜて続けられる
       const c = p.deck.pop();
-      if (!c) throw new SRuleError('山札がありません．止めてください');
+      if (!c) throw new SRuleError('山札も捨札もありません．止めてください');
       p.flow.push(c);
       const m = moveOf(c);
       if (choicesFor(c, w).length) { s.turn = 'branch'; return; }
@@ -237,7 +241,7 @@ export function applySlide(s: SState, seat: number, a: SAction): void {
     }
     case 'stop': {
       if (s.turn !== 'move') throw new SRuleError('今は止められません');
-      if (!p.flow.length && p.deck.length) throw new SRuleError('少なくとも1枚めくってください');
+      if (!p.flow.length && canFlip(p)) throw new SRuleError('少なくとも1枚めくってください');
       stop(s, p);
       return;
     }
@@ -270,13 +274,13 @@ function resolve(s: SState, p: SPlayer, a: { buy: SKind[]; remove: number[]; rot
   const pos = p.walk.pos;
   const power = cellPower(pos, s.board);
   if (power.kind !== 'buy' && (a.buy.length || a.rotate.length)) throw new SRuleError('物欲の行でしか取得できません');
-  if (power.kind !== 'remove' && a.remove.length) throw new SRuleError('捨欲の行でしか排除できません');
   // 取得
   let total = 0;
   const need: Partial<Record<SKind, number>> = {};
   for (const k of a.buy) {
     const cost = SCARDS[k].cost;
     if (cost === null || s.market[k] === undefined) throw new SRuleError('市場にないカードです');
+    if (!canBuyAt(k, pos.x)) throw new SRuleError(`${SCARDS[k].name}は衝動${SCARDS[k].buyNeed}以上の列でないと取得できません`);
     total += cost;
     need[k] = (need[k] ?? 0) + 1;
   }
@@ -293,7 +297,14 @@ function resolve(s: SState, p: SPlayer, a: { buy: SKind[]; remove: number[]; rot
   if (fromFlow.length + fromDiscard.length !== ids.length) throw new SRuleError('今日の流れのカードしか排除できません');
   if (fromDiscard.length > (isDeep(pos.y, s.board) ? 1 : 0)) throw new SRuleError('捨札から排除できるのは捨欲3で1枚だけです');
   if ([...fromFlow, ...fromDiscard].some(c => c.fav)) throw new SRuleError('お気に入りは排除できません');
-  if (power.kind === 'remove' && removeLoad(fromFlow) > power.amount) throw new SRuleError(`捨欲${power.amount}を超えています`);
+  // 最後の1枚：持ち物が今日の流れの1枚だけなら，どこで止まってもその1枚は手放せる
+  const last = isLastCard(p) && fromFlow.length === 1 && !fromDiscard.length;
+  if (!last) {
+    if (power.kind !== 'remove' && ids.length) throw new SRuleError('捨欲の行でしか排除できません');
+    const hard = [...fromFlow, ...fromDiscard].find(c => !canDropAt(c.kind, pos.x));
+    if (hard) throw new SRuleError(`${SCARDS[hard.kind].name}は理性${SCARDS[hard.kind].dropNeed}以上の列でないと排除できません`);
+    if (power.kind === 'remove' && removeLoad(fromFlow) > power.amount) throw new SRuleError(`捨欲${power.amount}を超えています`);
+  }
 
   for (const id of a.rotate) p.flow.find(x => x.id === id)!.fav = true;
   for (const k of a.buy) {
@@ -351,9 +362,14 @@ function startTurn(s: SState): void {
   const p = s.players[s.current];
   p.walk = newWalk(s.board, p.walk.blocks);
   s.turn = 'move';
-  if (p.deck.length === 0) {
-    p.deck = p.discard;
-    p.discard = [];
-    shuffle(p.deck, s);
-  }
+  if (p.deck.length === 0) reshuffle(s, p);
 }
+
+function reshuffle(s: SState, p: SPlayer): void {
+  p.deck = p.discard;
+  p.discard = [];
+  shuffle(p.deck, s);
+}
+
+/** まだめくれるか（山札か捨札が残っている） */
+export const canFlip = (p: SPlayer) => p.deck.length + p.discard.length > 0;

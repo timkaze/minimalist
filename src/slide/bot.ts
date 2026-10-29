@@ -1,10 +1,10 @@
 // スライド版のボット．めくるか止めるかは「止めたときの価値」と「めくり続けたときの期待値」（2手先まで）を比べて決める．
 // 型（genome）ごとに取得の優先順・お気に入りの扱いが違う．型が勝ち筋（身軽・滑走・お気に入り・揺り戻し）に対応する
 
-import { DELTA, DIRS, Dir, SCARDS, SKind } from './cards';
+import { DELTA, DIRS, Dir, SCARDS, SKind, canBuyAt, canDropAt } from './cards';
 import {
   SAction, SCard, SPlayer, SState, Walk, applyMove, applySlide, brake, blocked, canAdjust, canPeek, cellPower, choicesFor,
-  isDeep, moveOf, ownedCards, removeLoad, stopperCells,
+  canFlip, isDeep, isLastCard, moveOf, ownedCards, removeLoad, stopperCells,
 } from './engine';
 
 export interface SGenome {
@@ -17,11 +17,11 @@ export interface SGenome {
 }
 
 export const SPRESETS: Record<string, SGenome> = {
-  light:  { favorite: false, greed: 1.0, buy: [{ kind: 'LIGHT', cap: 3 }, { kind: 'DRAG', cap: 2 }, { kind: 'DOWN2', cap: 1 }, { kind: 'DOWN', cap: 1 }] },
-  slide:  { favorite: false, greed: 1.0, buy: [{ kind: 'SLIDE', cap: 2 }, { kind: 'ICE', cap: 1 }, { kind: 'STOP', cap: 1 }, { kind: 'DOWN2', cap: 1 }, { kind: 'DOWN', cap: 1 }] },
-  fav:    { favorite: true,  greed: 1.0, buy: [{ kind: 'FAV', cap: 2 }, { kind: 'USED', cap: 2 }, { kind: 'DOWN2', cap: 2 }, { kind: 'DRAG', cap: 1 }, { kind: 'DOWN', cap: 1 }] },
-  swing:  { favorite: false, greed: 1.0, buy: [{ kind: 'SWING', cap: 3 }, { kind: 'MEMO', cap: 2 }, { kind: 'DOWN2', cap: 1 }, { kind: 'DOWN', cap: 1 }] },
-  mixed:  { favorite: false, greed: 1.0, buy: [{ kind: 'DOWN2', cap: 2 }, { kind: 'BR', cap: 1 }, { kind: 'LIGHT', cap: 1 }, { kind: 'SWING', cap: 1 }, { kind: 'DRAG', cap: 1 }] },
+  light:  { favorite: false, greed: 1.0, buy: [{ kind: 'LIGHT', cap: 3 }, { kind: 'CALM', cap: 1 }, { kind: 'DOWN2', cap: 1 }, { kind: 'DRAG', cap: 1 }, { kind: 'DOWN', cap: 1 }] },
+  slide:  { favorite: false, greed: 1.0, buy: [{ kind: 'SLIDE', cap: 2 }, { kind: 'RUSH', cap: 1 }, { kind: 'ICE', cap: 1 }, { kind: 'CALM', cap: 1 }, { kind: 'STOP', cap: 1 }, { kind: 'DOWN2', cap: 1 }] },
+  fav:    { favorite: true,  greed: 1.0, buy: [{ kind: 'FAV', cap: 2 }, { kind: 'USED', cap: 2 }, { kind: 'RUSH', cap: 1 }, { kind: 'DOWN2', cap: 2 }, { kind: 'CALM', cap: 1 }] },
+  swing:  { favorite: false, greed: 1.0, buy: [{ kind: 'SWING', cap: 3 }, { kind: 'UP2', cap: 1 }, { kind: 'MEMO', cap: 2 }, { kind: 'CALM', cap: 1 }, { kind: 'DOWN2', cap: 1 }] },
+  mixed:  { favorite: false, greed: 1.0, buy: [{ kind: 'DOWN2', cap: 2 }, { kind: 'UP2', cap: 1 }, { kind: 'BREATH', cap: 1 }, { kind: 'BR', cap: 1 }, { kind: 'LIGHT', cap: 1 }, { kind: 'SWING', cap: 1 }] },
   nobuy:  { favorite: false, greed: 1.0, buy: [{ kind: 'DOWN', cap: 2 }] },
 };
 export const SBOT_LABELS: Record<string, string> = {
@@ -33,7 +33,7 @@ export const SBOT_LABELS: Record<string, string> = {
 interface Ctx { s: SState; p: SPlayer; g: SGenome }
 
 /** 取得：優先順に，上限まで，予算内で（貪欲）．価値は優先度の重み */
-export function planBuy(c: Ctx, budget: number): { buy: SKind[]; value: number } {
+export function planBuy(c: Ctx, budget: number, x: number): { buy: SKind[]; value: number } {
   const owned = ownedCards(c.p);
   const have = (k: SKind) => owned.filter(x => x.kind === k).length;
   const buy: SKind[] = [];
@@ -41,7 +41,7 @@ export function planBuy(c: Ctx, budget: number): { buy: SKind[]; value: number }
   c.g.buy.forEach(({ kind, cap }, i) => {
     const cost = SCARDS[kind].cost ?? 99;
     let n = have(kind);
-    let stock = c.s.market[kind] ?? 0;
+    let stock = canBuyAt(kind, x) ? c.s.market[kind] ?? 0 : 0;
     while (n < cap && stock > 0 && cost <= left) {
       buy.push(kind);
       left -= cost; n++; stock--;
@@ -60,9 +60,9 @@ function trashScore(c: Ctx, card: SCard): number {
 }
 
 /** 排除：今日の流れから，捨てたい順に，量の範囲で．終盤は型のカードも捨てる */
-export function planRemove(c: Ctx, flow: SCard[], amount: number, deep: boolean): { remove: number[]; value: number } {
+export function planRemove(c: Ctx, flow: SCard[], amount: number, deep: boolean, xcol: number): { remove: number[]; value: number } {
   const owned = ownedCards(c.p).filter(x => !x.fav);
-  const cand = flow.filter(x => !x.fav).sort((a, b) => trashScore(c, b) - trashScore(c, a));
+  const cand = flow.filter(x => !x.fav && canDropAt(x.kind, xcol)).sort((a, b) => trashScore(c, b) - trashScore(c, a));
   const chosen: SCard[] = [];
   for (const x of cand) {
     if (removeLoad([...chosen, x]) <= amount) chosen.push(x);
@@ -74,7 +74,7 @@ export function planRemove(c: Ctx, flow: SCard[], amount: number, deep: boolean)
   const remove = picked.map(x => x.id);
   let value = picked.reduce((n, x) => n + 2 + Math.max(0, trashScore(c, x)) * 0.2, 0);
   if (deep) {
-    const d = c.p.discard.filter(x => !x.fav).sort((a, b) => trashScore(c, b) - trashScore(c, a))[0];
+    const d = c.p.discard.filter(x => !x.fav && canDropAt(x.kind, xcol)).sort((a, b) => trashScore(c, b) - trashScore(c, a))[0];
     if (d) { remove.push(d.id); value += 2; }
   }
   return { remove, value };
@@ -99,8 +99,8 @@ function valueAt(c: Ctx, w: Walk, flow: SCard[]): number {
   for (const pos of opts) {
     const pw = cellPower(pos, c.s.board);
     let v = 0;
-    if (pw.kind === 'buy') v = planBuy(c, pw.amount).value + planRotate(c, flow).length * 3;
-    if (pw.kind === 'remove') v = planRemove(c, flow, pw.amount, isDeep(pos.y, c.s.board)).value;
+    if (pw.kind === 'buy') v = planBuy(c, pw.amount, pos.x).value + planRotate(c, flow).length * 3;
+    if (pw.kind === 'remove') v = planRemove(c, flow, pw.amount, isDeep(pos.y, c.s.board), pos.x).value;
     best = Math.max(best, v);
   }
   return best;
@@ -163,6 +163,9 @@ function contValue(c: Ctx, w: Walk, flow: SCard[], deck: SCard[], depth: number)
   return (sum / deck.length) * c.g.greed - 0.15;
 }
 
+/** 次にめくる候補（山札が空なら捨札を混ぜたもの） */
+const nextDeck = (p: SPlayer) => (p.deck.length ? p.deck : p.discard);
+
 /** 今の場面での行動を1つ選ぶ */
 export function chooseSlideAction(s: SState, g: SGenome): SAction {
   const p = s.players[s.current];
@@ -170,9 +173,9 @@ export function chooseSlideAction(s: SState, g: SGenome): SAction {
   const w = p.walk;
   const card = p.flow[p.flow.length - 1];
   switch (s.turn) {
-    case 'branch': return { type: 'branch', dir: afterCard(c, w, p.flow.slice(0, -1), card, p.deck, 1).dir ?? choicesFor(card, w)[0] };
+    case 'branch': return { type: 'branch', dir: afterCard(c, w, p.flow.slice(0, -1), card, nextDeck(p), 1).dir ?? choicesFor(card, w)[0] };
     case 'stopper': {
-      const r = afterCard(c, w, p.flow.slice(0, -1), card, p.deck, 1);
+      const r = afterCard(c, w, p.flow.slice(0, -1), card, nextDeck(p), 1);
       return { type: 'stopper', cell: r.cell ?? null };
     }
     case 'adjust': {
@@ -182,25 +185,26 @@ export function chooseSlideAction(s: SState, g: SGenome): SAction {
         const q = { x: w.pos.x + dx, y: w.pos.y + dy };
         if (blocked(w, q)) continue;
         const pw = cellPower(q, s.board);
-        const v = pw.kind === 'buy' ? planBuy(c, pw.amount).value : pw.kind === 'remove' ? planRemove(c, p.flow, pw.amount, isDeep(q.y, s.board)).value : 0;
+        const v = pw.kind === 'buy' ? planBuy(c, pw.amount, q.x).value : pw.kind === 'remove' ? planRemove(c, p.flow, pw.amount, isDeep(q.y, s.board), q.x).value : 0;
         if (v > best.v) best = { v, dir: d };
       }
       return { type: 'adjust', dir: best.dir };
     }
     case 'resolve': {
+      if (isLastCard(p)) return { type: 'resolve', buy: [], remove: [p.flow[0].id], rotate: [] };
       const pw = cellPower(w.pos, s.board);
-      if (pw.kind === 'buy') return { type: 'resolve', buy: planBuy(c, pw.amount).buy, remove: [], rotate: planRotate(c, p.flow) };
-      if (pw.kind === 'remove') return { type: 'resolve', buy: [], remove: planRemove(c, p.flow, pw.amount, isDeep(w.pos.y, s.board)).remove, rotate: [] };
+      if (pw.kind === 'buy') return { type: 'resolve', buy: planBuy(c, pw.amount, w.pos.x).buy, remove: [], rotate: planRotate(c, p.flow) };
+      if (pw.kind === 'remove') return { type: 'resolve', buy: [], remove: planRemove(c, p.flow, pw.amount, isDeep(w.pos.y, s.board), w.pos.x).remove, rotate: [] };
       return { type: 'resolve', buy: [], remove: [], rotate: [] };
     }
     case 'move': {
-      if (!p.deck.length) return { type: 'stop' };
+      if (!canFlip(p) || isLastCard(p)) return { type: 'stop' };
       if (!p.flow.length) return { type: 'flip' }; // 毎手番，少なくとも1枚めくる
       const stopV = stopValue(c, w, p.flow);
       // 理性3では次の1枚が見える
-      const contV = canPeek(w.pos.x)
+      const contV = canPeek(w.pos.x) && p.deck.length
         ? afterCard(c, w, p.flow, p.deck[p.deck.length - 1], p.deck.slice(0, -1), 1).value
-        : contValue(c, w, p.flow, p.deck, 1);
+        : contValue(c, w, p.flow, nextDeck(p), 1);
       return contV > stopV ? { type: 'flip' } : { type: 'stop' };
     }
   }
