@@ -4,7 +4,7 @@
 import { DELTA, DIRS, Dir, SCARDS, SKind } from './cards';
 import {
   SAction, SCard, SPlayer, SState, Walk, applyMove, applySlide, brake, blocked, canAdjust, canPeek, cellPower, choicesFor,
-  moveOf, ownedCards, removeLoad, stopperCells,
+  isDeep, moveOf, ownedCards, removeLoad, stopperCells,
 } from './engine';
 
 export interface SGenome {
@@ -97,16 +97,16 @@ function valueAt(c: Ctx, w: Walk, flow: SCard[]): number {
   }
   let best = 0;
   for (const pos of opts) {
-    const pw = cellPower(pos);
+    const pw = cellPower(pos, c.s.board);
     let v = 0;
     if (pw.kind === 'buy') v = planBuy(c, pw.amount).value + planRotate(c, flow).length * 3;
-    if (pw.kind === 'remove') v = planRemove(c, flow, pw.amount, pos.y <= -4).value;
+    if (pw.kind === 'remove') v = planRemove(c, flow, pw.amount, isDeep(pos.y, c.s.board)).value;
     best = Math.max(best, v);
   }
   return best;
 }
 
-const cloneWalk = (w: Walk): Walk => ({ pos: { ...w.pos }, lastDir: w.lastDir, blocks: w.blocks.map(b => ({ ...b })), trail: [] });
+const cloneWalk = (w: Walk): Walk => ({ board: w.board, pos: { ...w.pos }, lastDir: w.lastDir, blocks: w.blocks.map(b => ({ ...b })), trail: [] });
 
 function stopValue(c: Ctx, w: Walk, flow: SCard[]): number {
   const v = cloneWalk(w);
@@ -181,16 +181,16 @@ export function chooseSlideAction(s: SState, g: SGenome): SAction {
         const [dx, dy] = DELTA[d];
         const q = { x: w.pos.x + dx, y: w.pos.y + dy };
         if (blocked(w, q)) continue;
-        const pw = cellPower(q);
-        const v = pw.kind === 'buy' ? planBuy(c, pw.amount).value : pw.kind === 'remove' ? planRemove(c, p.flow, pw.amount, q.y <= -4).value : 0;
+        const pw = cellPower(q, s.board);
+        const v = pw.kind === 'buy' ? planBuy(c, pw.amount).value : pw.kind === 'remove' ? planRemove(c, p.flow, pw.amount, isDeep(q.y, s.board)).value : 0;
         if (v > best.v) best = { v, dir: d };
       }
       return { type: 'adjust', dir: best.dir };
     }
     case 'resolve': {
-      const pw = cellPower(w.pos);
+      const pw = cellPower(w.pos, s.board);
       if (pw.kind === 'buy') return { type: 'resolve', buy: planBuy(c, pw.amount).buy, remove: [], rotate: planRotate(c, p.flow) };
-      if (pw.kind === 'remove') return { type: 'resolve', buy: [], remove: planRemove(c, p.flow, pw.amount, w.pos.y <= -4).remove, rotate: [] };
+      if (pw.kind === 'remove') return { type: 'resolve', buy: [], remove: planRemove(c, p.flow, pw.amount, isDeep(w.pos.y, s.board)).remove, rotate: [] };
       return { type: 'resolve', buy: [], remove: [], rotate: [] };
     }
     case 'move': {

@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { SCARDS } from '../src/slide/cards';
 import {
-  SState, Walk, applySlide, brake, cellPower, isDone, newSlideGame, ownedCards, removeLoad, walk,
+  SBOARDS, SState, Walk, applySlide, brake, cellPower, isDone, newSlideGame, ownedCards, removeLoad, walk,
 } from '../src/slide/engine';
 import { SPRESETS, playSlideTurn } from '../src/slide/bot';
 
-const w0 = (blocks: { x: number; y: number }[] = []): Walk => ({ pos: { x: 0, y: 0 }, lastDir: null, blocks, trail: [] });
+const SHORT = SBOARDS.basic, STD = SBOARDS.slow;
+const w0 = (blocks: { x: number; y: number }[] = [], board = SHORT): Walk => ({ board, pos: { x: 0, y: 0 }, lastDir: null, blocks, trail: [] });
 const card = (kind: keyof typeof SCARDS, id = 900, fav = false) => ({ id, kind, fav });
 
 /** 現在の手番の人の山札の上を，指定のカードにする */
@@ -52,12 +53,16 @@ describe('スライド版', () => {
     expect(v.pos).toEqual({ x: -2, y: -1 });
   });
 
-  it('行の効果：物欲は浅く，捨欲は下ほど多く，衝動の列で上乗せ', () => {
-    expect(cellPower({ x: 0, y: 1 })).toEqual({ kind: 'buy', amount: 2 });
-    expect(cellPower({ x: 2, y: 3 })).toEqual({ kind: 'buy', amount: 6 });
-    expect(cellPower({ x: 0, y: 0 }).kind).toBe('none');
-    expect(cellPower({ x: 0, y: -1 })).toEqual({ kind: 'remove', amount: 1 });
-    expect(cellPower({ x: 1, y: -4 })).toEqual({ kind: 'remove', amount: 4 });
+  it('行の効果は盤の目盛りどおり．衝動の列で上乗せ', () => {
+    expect(cellPower({ x: 0, y: 1 }, SHORT)).toEqual({ kind: 'buy', amount: 2 });
+    expect(cellPower({ x: 2, y: 3 }, SHORT)).toEqual({ kind: 'buy', amount: 6 });
+    expect(cellPower({ x: 0, y: 0 }, SHORT).kind).toBe('none');
+    expect(cellPower({ x: 0, y: -1 }, SHORT)).toEqual({ kind: 'remove', amount: 1 });
+    expect(cellPower({ x: 1, y: -4 }, SHORT)).toEqual({ kind: 'remove', amount: 4 });
+    // ゆっくり：物欲 1,1,2,2,3,3,4／捨欲 0,1,1,2,3
+    expect([1, 2, 3, 4, 5, 6, 7].map(y => cellPower({ x: 0, y }, STD).amount)).toEqual([1, 1, 2, 2, 3, 3, 4]);
+    expect([-1, -2, -3, -4, -5].map(y => cellPower({ x: 0, y }, STD).amount)).toEqual([0, 1, 1, 2, 3]);
+    expect(cellPower({ x: 2, y: -1 }, STD)).toEqual({ kind: 'remove', amount: 2 }); // 捨欲0でも衝動2なら2
   });
 
   it('道連れ袋は，もう1枚を重さ0にする', () => {
@@ -66,7 +71,7 @@ describe('スライド版', () => {
   });
 
   it('取得は物欲の行で，排除は今日の流れから，排除したマスに積み木が残る', () => {
-    const s = newSlideGame([{ name: 'A' }, { name: 'B' }], 2);
+    const s = newSlideGame([{ name: 'A' }, { name: 'B' }], 2, { board: 'basic' });
     stack(s, 'WANT', 'WANT');
     applySlide(s, 0, { type: 'flip' });
     applySlide(s, 0, { type: 'stop' });
@@ -108,7 +113,7 @@ describe('スライド版', () => {
     for (let seed = 1; seed <= 40; seed++) {
       const n = 2 + (seed % 3);
       const gs = Array.from({ length: n }, (_, i) => SPRESETS[kinds[(seed + i) % kinds.length]]);
-      const s = newSlideGame(gs.map((_, i) => ({ name: `P${i}`, isBot: true })), seed);
+      const s = newSlideGame(gs.map((_, i) => ({ name: `P${i}`, isBot: true })), seed, { board: seed % 2 ? 'slow' : 'basic' });
       while (s.phase === 'play') playSlideTurn(s, gs);
       for (const p of s.players) expect(ownedCards(p).length + p.removed).toBe(5 + p.bought);
       if (s.winners.length) finished++;

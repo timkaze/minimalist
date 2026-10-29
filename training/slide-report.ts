@@ -9,6 +9,7 @@ import { rngFrom } from './common';
 
 const GAMES = Number(process.argv[2] ?? 600);
 const ONLY = (process.env.TYPES ?? '').split(',').filter(Boolean);
+const BOARD = process.env.BOARD ?? 'basic';
 
 export function runReport(games: number, label = '') {
   const names = ONLY.length ? ONLY : Object.keys(SPRESETS);
@@ -25,7 +26,7 @@ export function runReport(games: number, label = '') {
     const n = 2 + (g % 3);
     const who = Array.from({ length: n }, () => names[Math.floor(rand() * names.length)]);
     const gs = who.map(w => SPRESETS[w]);
-    const s: SState = newSlideGame(who.map((w, i) => ({ name: `${w}${i}`, isBot: true })), g * 7919 + 5);
+    const s: SState = newSlideGame(who.map((w, i) => ({ name: `${w}${i}`, isBot: true })), g * 7919 + 5, { board: BOARD });
     while (s.phase === 'play') {
       const before = s.log.length;
       const round = s.round;
@@ -54,12 +55,12 @@ export function runReport(games: number, label = '') {
     const t = [...m.values()].reduce((a, b) => a + b, 0) || 1;
     return keys.map(k => `${k}:${Math.round(100 * (m.get(k) ?? 0) / t)}`).join(' ');
   };
-  console.log(`\n## ${label || 'スライド版'}（${games}試合，2〜4人）`);
+  console.log(`\n## ${label || `スライド版・盤 ${BOARD}`}（${games}試合，2〜4人）`);
   console.log(`平均ラウンド ${avg(rounds).toFixed(1)}，引分 ${Math.round(100 * draws / games)}%，達成の仕方 0枚 ${finishBy.zero} / お気に入り ${finishBy.fav}`);
   console.log('| 型 | 勝率倍率 | 取得/人 |');
   console.log('|---|---|---|');
   for (const w of names) console.log(`| ${SBOT_LABELS[w] ?? w} | ${((win[w] ?? 0) / (app[w] || 1)).toFixed(2)} | ${avg(buys[w]).toFixed(1)} |`);
-  const rows = [3, 2, 1, 0, -1, -2, -3, -4], cols = [-3, -2, -1, 0, 1, 2, 3];
+  const rows = [7, 6, 5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5], cols = [-3, -2, -1, 0, 1, 2, 3];
   console.log(`止まった行(%) 前半 ${pctMap(rowHist.early, rows)}`);
   console.log(`止まった行(%) 後半 ${pctMap(rowHist.late, rows)}`);
   console.log(`止まった列(%) 前半 ${pctMap(colHist.early, cols)}`);

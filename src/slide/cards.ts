@@ -61,7 +61,7 @@ export const SCARDS: Record<SKind, SCardDef> = {
   BREATH: { kind: 'BREATH', name: '深呼吸',     move: step(['D', 'L'], 1), cost: 1, weight: 1, text: '↓1か←1' },
   LIGHT:  { kind: 'LIGHT',  name: '軽やか',     move: step(['D'], 1, { light: true }), cost: 2, weight: 1, text: `↓1＋身軽（排除${LIGHT_PER}枚ごとに+1）` },
   DRAG:   { kind: 'DRAG',   name: '道連れ袋',   move: step(['D'], 1), cost: 2, weight: 1, drag: true, text: '↓1．排除したとき今日の流れからもう1枚を重さ0で排除' },
-  SLIDE:  { kind: 'SLIDE',  name: '滑り台',     move: { t: 'slide', dir: 'D' }, cost: 3, weight: 1, text: '↓へぶつかるまで滑る' },
+  SLIDE:  { kind: 'SLIDE',  name: '滑り台',     move: { t: 'slide', dir: 'D' }, cost: 5, weight: 1, text: '↓へぶつかるまで滑る' },
   ICE:    { kind: 'ICE',    name: '氷の廊下',   move: { t: 'slide', dir: 'R' }, cost: 2, weight: 1, text: '→へぶつかるまで滑る' },
   STOP:   { kind: 'STOP',   name: 'ストッパー', move: { t: 'stopper' }, cost: 2, weight: 1, text: '上下左右に積み木を1個置く' },
   SWING:  { kind: 'SWING',  name: '揺り戻し',   move: { t: 'swing' }, cost: 2, weight: 1, text: '物欲の行なら↓2，捨欲の行なら↑1，中央なら↓1' },

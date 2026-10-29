@@ -33,6 +33,7 @@ header #quit { margin-left: auto; }
 @media (max-width: 860px) { .game { grid-template-columns: minmax(0, 1fr); } }
 
 .board { display: grid; grid-template-columns: 56px repeat(7, minmax(0, 1fr)); gap: 2px; }
+.board.big { max-width: 470px; }
 .board.mini { grid-template-columns: 14px repeat(7, 11px); gap: 1px; font-size: 8px; }
 .board .colh, .board .rowh { display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-align: center; line-height: 1.2; }
 .board.mini .colh, .board.mini .rowh { font-size: 8px; }

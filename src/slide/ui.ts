@@ -3,8 +3,8 @@
 import './ui.css';
 import { ARROW, DELTA, DIRS, Dir, SCARDS, SKind } from './cards';
 import {
-  SCard, SPlayer, SState, Walk, X_MAX, X_MIN, Y_MAX, Y_MIN, applySlide, bonus, brake, canAdjust, canPeek, cellPower,
-  choicesFor, favCost, inBoard, isCatch, newSlideGame, overshoot, ownedCards, removeLoad, rowEffect, samePos, stopperCells,
+  DEFAULT_BOARD, SBOARDS, SCard, SPlayer, SState, Walk, X_MAX, X_MIN, applySlide, bonus, brake, canAdjust, canPeek, cellPower,
+  choicesFor, favCost, inBoard, isCatch, isDeep, newSlideGame, overshoot, ownedCards, removeLoad, rowEffect, samePos, stopperCells, yMax, yMin,
 } from './engine';
 import { SBOT_LABELS, SPRESETS, chooseSlideAction } from './bot';
 import { randomSeed } from '../engine/rng';
@@ -35,6 +35,7 @@ function setup() {
     <p>手札はありません．山札の上をめくるたびに，欲に流されてコマが動きます．好きなところで止めて，
       <b>物欲</b>の行ならカードを取得，<b>捨欲</b>の行なら今日めくったカードを排除．デッキを0枚にするか，
       <b>お気に入りだけ3枚以下</b>にしたら達成です．</p>
+    <label>盤 <select id="board">${Object.values(SBOARDS).map(b => `<option value="${b.name}" ${b.name === (store.get('slide.board') ?? DEFAULT_BOARD) ? 'selected' : ''}>${b.label}</option>`).join('')}</select></label>
     <label>あなたの名前 <input id="name" value="${esc(store.get('slide.name') ?? 'あなた')}" maxlength="12"></label>
     <div id="bots">${[0, 1, 2].map(i => `<label>ボット${i + 1}
       <select data-i="${i}"><option value="">なし</option>${opts(saved[i] ?? '')}</select></label>`).join('')}</div>
@@ -47,7 +48,9 @@ function setup() {
     if (!botTypes.length) botTypes = ['light'];
     store.set('slide.name', name);
     store.set('slide.bots', botTypes.join(','));
-    s = newSlideGame([{ name }, ...botTypes.map(t => ({ name: SBOT_LABELS[t], isBot: true, botType: t }))], randomSeed());
+    const board = app.querySelector<HTMLSelectElement>('#board')!.value;
+    store.set('slide.board', board);
+    s = newSlideGame([{ name }, ...botTypes.map(t => ({ name: SBOT_LABELS[t], isBot: true, botType: t }))], randomSeed(), { board });
     render();
   };
 }
@@ -55,7 +58,7 @@ function setup() {
 function rulesHTML() {
   return `<ul>
     <li>毎手番，コマは中央から．少なくとも1枚めくる．山札が尽きたら止めるしかない（次の手番の最初に捨札を混ぜる）</li>
-    <li>縦：上ほど<b>物欲</b>（取得の額 2/3/4），下ほど<b>捨欲</b>（排除の量 1/2/3．一番下は捨札からも1枚）</li>
+    <li>縦：中央から上が<b>物欲</b>（その行の額まで取得），下が<b>捨欲</b>（その行の量まで排除．一番下は捨札からも1枚）．額・量は盤の左に書いてある</li>
     <li>横：右ほど<b>衝動</b>．止めると最後に動いた向きへ1/2マス余分に進む（衝動3はぶつかるまで）が，額・量が+1/+2/+3．
       左ほど<b>理性</b>．理性2以上は止めた後に1マス動ける，理性3は次の1枚が見える</li>
     <li>排除できるのは今日めくったカード（重さの合計が量以下）．排除したマスに<b>積み木</b>（片付けた跡）が残る．
@@ -71,14 +74,14 @@ const me = 0;
 const cur = () => s!.players[s!.current];
 
 function rowLabel(y: number) {
-  const e = rowEffect(y);
-  return e.kind === 'buy' ? `物欲${y}` : e.kind === 'remove' ? `捨欲${-y}` : 'スタート';
+  const e = rowEffect(y, s!.board);
+  return e.kind === 'buy' ? '物欲' : e.kind === 'remove' ? '捨欲' : 'スタート';
 }
 function colLabel(x: number) { return x < 0 ? `理性${-x}` : x > 0 ? `衝動${x}` : '中'; }
 
 /** 止めたらどこで止まるか（ブレーキ込み） */
 function stopPreview(w: Walk): Walk {
-  const v: Walk = { pos: { ...w.pos }, lastDir: w.lastDir, blocks: w.blocks, trail: [] };
+  const v: Walk = { board: w.board, pos: { ...w.pos }, lastDir: w.lastDir, blocks: w.blocks, trail: [] };
   brake(v);
   return v;
 }
@@ -88,9 +91,10 @@ function boardHTML(p: SPlayer, big: boolean, clickCells: { x: number; y: number 
   const active = s!.players[s!.current] === p;
   let h = `<div class="board ${big ? 'big' : 'mini'}"><div class="corner"></div>`;
   for (let x = X_MIN; x <= X_MAX; x++) h += `<div class="colh ${x > 0 ? 'imp' : x < 0 ? 'calm' : ''}">${big ? colLabel(x) : x}${big && x > 0 ? `<small>+${bonus(x)}・${overshoot(x) === Infinity ? '滑る' : overshoot(x) + '余分'}</small>` : ''}${big && x <= -2 ? `<small>${canPeek(x) ? '1枚見える' : ''}${canAdjust(x) ? '・1マス調整' : ''}</small>` : ''}</div>`;
-  for (let y = Y_MAX; y >= Y_MIN; y--) {
-    const e = rowEffect(y);
-    h += `<div class="rowh ${e.kind}">${big ? rowLabel(y) : y}${big && e.kind !== 'none' ? `<small>${e.kind === 'buy' ? '額' : '量'}${e.amount}${y <= -4 ? '＋捨札1' : ''}</small>` : ''}</div>`;
+  const b = s!.board;
+  for (let y = yMax(b); y >= yMin(b); y--) {
+    const e = rowEffect(y, b);
+    h += `<div class="rowh ${e.kind}">${big ? rowLabel(y) : e.kind === 'none' ? 'S' : e.amount}${big && e.kind !== 'none' ? `<small>${e.kind === 'buy' ? '額' : '量'}${e.amount}${isDeep(y, b) ? '＋捨札1' : ''}</small>` : ''}</div>`;
     for (let x = X_MIN; x <= X_MAX; x++) {
       const pos = { x, y };
       const cls = [e.kind, x > 0 ? 'imp' : x < 0 ? 'calm' : ''];
@@ -127,7 +131,7 @@ function render() {
   let preview: { x: number; y: number } | undefined;
   if (mine && s.turn === 'stopper') clickCells = stopperCells(p.walk);
   if (mine && s.turn === 'move' && p.flow.length) preview = stopPreview(p.walk).pos;
-  if (mine && s.turn === 'adjust') clickCells = DIRS.map(d => ({ x: p.walk.pos.x + DELTA[d][0], y: p.walk.pos.y + DELTA[d][1] })).filter(inBoard);
+  if (mine && s.turn === 'adjust') clickCells = DIRS.map(d => ({ x: p.walk.pos.x + DELTA[d][0], y: p.walk.pos.y + DELTA[d][1] })).filter(q => inBoard(q, s!.board));
 
   const others = s.players.map((q, i) => ({ q, i })).filter(x => x.i !== me);
   app.innerHTML = `
@@ -196,11 +200,11 @@ function controlsHTML(): string {
   const p = cur();
   if (st.current !== me) return `<p>${esc(p.name)}が考えています…</p>`;
   const w = p.walk;
-  const here = cellPower(w.pos);
+  const here = cellPower(w.pos, st.board);
   switch (st.turn) {
     case 'move': {
       const pv = stopPreview(w);
-      const pw = cellPower(pv.pos);
+      const pw = cellPower(pv.pos, st.board);
       const peek = canPeek(w.pos.x) && p.deck.length ? `<p>理性3：次の1枚は <b>${SCARDS[p.deck[p.deck.length - 1].kind].name}</b></p>` : '';
       const where = !p.flow.length ? '少なくとも1枚めくってください'
         : `止めると (${pv.pos.x},${pv.pos.y}) ${pw.kind === 'buy' ? `物欲${pw.amount}で取得` : pw.kind === 'remove' ? `捨欲${pw.amount}で排除` : 'で何もしない'}${samePos(pv.pos, w.pos) ? '' : '（勢いで進む）'}`;
@@ -229,7 +233,7 @@ function controlsHTML(): string {
       if (here.kind === 'remove') {
         const flowSel = p.flow.filter(c => sel.remove.has(c.id));
         const load = removeLoad(flowSel);
-        const deep = w.pos.y <= -4;
+        const deep = isDeep(w.pos.y, st.board);
         const discSel = p.discard.filter(c => sel.remove.has(c.id));
         return `<p>捨欲 <b>${here.amount}</b>：今日の流れから排除するカードを選んでください（重さ ${load}/${here.amount}）</p>
           <div class="flow pickable">${p.flow.map(c => cardHTML(c, `data-rm="${c.id}"`, sel.remove.has(c.id) ? 'on' : '')).join('')}</div>
@@ -252,7 +256,7 @@ function act(a: Parameters<typeof applySlide>[2]) {
 function bindControls(clickCells: { x: number; y: number }[]) {
   const q = <T extends HTMLElement>(sel: string) => app.querySelector<T>(sel);
   q('#again')?.addEventListener('click', () => {
-    s = newSlideGame(s!.players.map(p => ({ name: p.name, isBot: p.isBot, botType: p.botType })), randomSeed());
+    s = newSlideGame(s!.players.map(p => ({ name: p.name, isBot: p.isBot, botType: p.botType })), randomSeed(), { board: s!.board.name });
     render();
   });
   q('#flip')?.addEventListener('click', () => act({ type: 'flip' }));

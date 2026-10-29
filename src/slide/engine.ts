@@ -1,12 +1,25 @@
 // スライド版のルール．仕様：Memories/01_BoardGames/ミニマリスト_スライド版_仕様.md
-//   盤：横 x = −3（理性3）〜3（衝動3），縦 y = 3（物欲3）〜 −4（捨欲3）．毎手番 (0,0) から始める
+//   盤：横 x = −3（理性3）〜3（衝動3）．縦は中央 y = 0 から上が物欲，下が捨欲（行ごとの額・量は SBoard）．毎手番 (0,0) から始める
 //   手番：めくる（コマが動く）か止めるかを繰り返し，止まったマスで取得か排除をする
 //   積み木（片付けた跡・ストッパー）：そのマスに入ると，そのカードの動きはそこで終わる
 
 import { DELTA, Dir, FAV_MOVE, LIGHT_PER, MEMO_AT, Move, SCARDS, SKind, STARTING, UNLIMITED_KINDS, MARKET } from './cards';
 import { shuffle } from '../engine/rng';
 
-export const X_MIN = -3, X_MAX = 3, Y_MIN = -4, Y_MAX = 3;
+export const X_MIN = -3, X_MAX = 3;
+
+/** 盤の縦の目盛り：buy[i] は中央から i+1 行上の取得の額，remove[i] は i+1 行下の排除の量（一番下は捨札からも1枚） */
+export interface SBoard { name: string; label: string; buy: number[]; remove: number[] }
+export const SBOARDS: Record<string, SBoard> = {
+  basic: { name: 'basic', label: '基本（物欲 2,3,4／捨欲 1,2,3,3）', buy: [2, 3, 4], remove: [1, 2, 3, 3] },
+  // ゆっくり：額・量の増え方を遅くした盤．1マスずつ動くカードでは遠い行まで届かず，ボット同士では長引く（仕様のmd）
+  slow: { name: 'slow', label: 'ゆっくり（物欲 1,1,2,2,3,3,4／捨欲 0,1,1,2,3）', buy: [1, 1, 2, 2, 3, 3, 4], remove: [0, 1, 1, 2, 3] },
+};
+export const DEFAULT_BOARD = 'basic';
+export const yMax = (b: SBoard) => b.buy.length;
+export const yMin = (b: SBoard) => -b.remove.length;
+/** 一番下の行（捨札からも1枚排除できる） */
+export const isDeep = (y: number, b: SBoard) => y === yMin(b);
 export const BLOCKS = 4;
 export const FINISH_FAVS = 3;
 export const MAX_ROUNDS = 60;
@@ -14,13 +27,13 @@ export const UNLIMITED = 99;
 
 export interface Pos { x: number; y: number }
 export const samePos = (a: Pos, b: Pos) => a.x === b.x && a.y === b.y;
-export const inBoard = (p: Pos) => p.x >= X_MIN && p.x <= X_MAX && p.y >= Y_MIN && p.y <= Y_MAX;
+export const inBoard = (p: Pos, b: SBoard) => p.x >= X_MIN && p.x <= X_MAX && p.y >= yMin(b) && p.y <= yMax(b);
 const isStart = (p: Pos) => p.x === 0 && p.y === 0;
 
 /** 行の効果：取得の額か排除の量（どちらでもなければ none） */
-export function rowEffect(y: number): { kind: 'buy' | 'remove' | 'none'; amount: number } {
-  if (y >= 1) return { kind: 'buy', amount: [0, 2, 3, 4][y] };
-  if (y <= -1) return { kind: 'remove', amount: Math.min(3, -y) };
+export function rowEffect(y: number, b: SBoard): { kind: 'buy' | 'remove' | 'none'; amount: number } {
+  if (y >= 1) return { kind: 'buy', amount: b.buy[y - 1] };
+  if (y <= -1) return { kind: 'remove', amount: b.remove[-y - 1] };
   return { kind: 'none', amount: 0 };
 }
 /** 列の上乗せ（衝動の側だけ） */
@@ -35,10 +48,10 @@ export const canPeek = (x: number) => x <= -3;
 export interface SCard { id: number; kind: SKind; fav: boolean }
 
 /** 手番中の動きの状態（ボットの先読みでも使う） */
-export interface Walk { pos: Pos; lastDir: Dir | null; blocks: Pos[]; trail: Pos[] }
+export interface Walk { board: SBoard; pos: Pos; lastDir: Dir | null; blocks: Pos[]; trail: Pos[] }
 
 /** 盤の外へは出られない（端で止まる） */
-export const blocked = (_w: Walk, p: Pos) => !inBoard(p);
+export const blocked = (w: Walk, p: Pos) => !inBoard(p, w.board);
 /** 積み木のマス：入れるが，入ったらそのカードの動きはそこで終わる（前に片付けた場所に引っかかる） */
 export const isCatch = (w: Walk, p: Pos) => w.blocks.some(b => samePos(b, p));
 
@@ -68,7 +81,7 @@ export function choicesFor(card: SCard, w: Walk): Dir[] {
 /** 積み木を置ける場所（コマの上下左右．盤の中・スタート以外・積み木のないマス） */
 export function stopperCells(w: Walk): Pos[] {
   return (['U', 'D', 'L', 'R'] as Dir[]).map(d => ({ x: w.pos.x + DELTA[d][0], y: w.pos.y + DELTA[d][1] }))
-    .filter(p => inBoard(p) && !isStart(p) && !w.blocks.some(b => samePos(b, p)));
+    .filter(p => inBoard(p, w.board) && !isStart(p) && !w.blocks.some(b => samePos(b, p)));
 }
 
 export function addBlock(blocks: Pos[], p: Pos): void {
@@ -138,6 +151,7 @@ export interface SState {
   log: string[];
   rng: number;
   nextId: number;
+  board: SBoard;
 }
 
 export type SAction =
@@ -150,18 +164,22 @@ export type SAction =
 
 export class SRuleError extends Error {}
 
-const newWalk = (blocks: Pos[]): Walk => ({ pos: { x: 0, y: 0 }, lastDir: null, blocks, trail: [{ x: 0, y: 0 }] });
+const newWalk = (board: SBoard, blocks: Pos[]): Walk => ({ board, pos: { x: 0, y: 0 }, lastDir: null, blocks, trail: [{ x: 0, y: 0 }] });
 
-export function newSlideGame(setup: { name: string; isBot?: boolean; botType?: string }[], seed: number, market: SKind[] = MARKET): SState {
+export function newSlideGame(
+  setup: { name: string; isBot?: boolean; botType?: string }[], seed: number, opts: { market?: SKind[]; board?: string } = {},
+): SState {
+  const board = SBOARDS[opts.board ?? DEFAULT_BOARD] ?? SBOARDS[DEFAULT_BOARD];
+  const market = opts.market ?? MARKET;
   const s: SState = {
-    players: [], market: {}, current: 0, round: 1, phase: 'play', turn: 'move', winners: [], log: [], rng: seed, nextId: 1,
+    players: [], market: {}, current: 0, round: 1, phase: 'play', turn: 'move', winners: [], log: [], rng: seed, nextId: 1, board,
   };
   for (const k of market) s.market[k] = UNLIMITED_KINDS.includes(k) ? UNLIMITED : Math.max(2, setup.length);
   for (const p of setup) {
     const deck: SCard[] = [];
     for (const [k, n] of STARTING) for (let i = 0; i < n; i++) deck.push({ id: s.nextId++, kind: k, fav: false });
     shuffle(deck, s);
-    s.players.push({ name: p.name, isBot: !!p.isBot, botType: p.botType, deck, discard: [], flow: [], walk: newWalk([]), removed: 0, bought: 0, finished: false });
+    s.players.push({ name: p.name, isBot: !!p.isBot, botType: p.botType, deck, discard: [], flow: [], walk: newWalk(board, []), removed: 0, bought: 0, finished: false });
   }
   s.log.push('ゲーム開始');
   return s;
@@ -173,8 +191,8 @@ export const isDone = (p: SPlayer) => { const o = ownedCards(p); return o.length
 export const favCost = (p: SPlayer) => ownedCards(p).filter(c => c.fav).reduce((n, c) => n + (SCARDS[c.kind].cost ?? 0), 0);
 
 /** 止まったマスの効果の額・量（上乗せ込み） */
-export function cellPower(pos: Pos): { kind: 'buy' | 'remove' | 'none'; amount: number } {
-  const e = rowEffect(pos.y);
+export function cellPower(pos: Pos, b: SBoard): { kind: 'buy' | 'remove' | 'none'; amount: number } {
+  const e = rowEffect(pos.y, b);
   return e.kind === 'none' ? e : { kind: e.kind, amount: e.amount + bonus(pos.x) };
 }
 
@@ -250,7 +268,7 @@ function stop(s: SState, p: SPlayer): void {
 
 function resolve(s: SState, p: SPlayer, a: { buy: SKind[]; remove: number[]; rotate: number[] }): void {
   const pos = p.walk.pos;
-  const power = cellPower(pos);
+  const power = cellPower(pos, s.board);
   if (power.kind !== 'buy' && (a.buy.length || a.rotate.length)) throw new SRuleError('物欲の行でしか取得できません');
   if (power.kind !== 'remove' && a.remove.length) throw new SRuleError('捨欲の行でしか排除できません');
   // 取得
@@ -273,7 +291,7 @@ function resolve(s: SState, p: SPlayer, a: { buy: SKind[]; remove: number[]; rot
   const fromFlow = ids.map(id => p.flow.find(c => c.id === id)).filter(Boolean) as SCard[];
   const fromDiscard = ids.map(id => p.discard.find(c => c.id === id)).filter(Boolean) as SCard[];
   if (fromFlow.length + fromDiscard.length !== ids.length) throw new SRuleError('今日の流れのカードしか排除できません');
-  if (fromDiscard.length > (pos.y <= -4 ? 1 : 0)) throw new SRuleError('捨札から排除できるのは捨欲3で1枚だけです');
+  if (fromDiscard.length > (isDeep(pos.y, s.board) ? 1 : 0)) throw new SRuleError('捨札から排除できるのは捨欲3で1枚だけです');
   if ([...fromFlow, ...fromDiscard].some(c => c.fav)) throw new SRuleError('お気に入りは排除できません');
   if (power.kind === 'remove' && removeLoad(fromFlow) > power.amount) throw new SRuleError(`捨欲${power.amount}を超えています`);
 
@@ -331,7 +349,7 @@ function endTurn(s: SState, p: SPlayer): void {
 
 function startTurn(s: SState): void {
   const p = s.players[s.current];
-  p.walk = newWalk(p.walk.blocks);
+  p.walk = newWalk(s.board, p.walk.blocks);
   s.turn = 'move';
   if (p.deck.length === 0) {
     p.deck = p.discard;

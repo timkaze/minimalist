@@ -1,17 +1,18 @@
 # push するたびに，テスト → ビルド → Cloudflare へデプロイ
 #   main ブランチ：本番（minimalist-online.<サブドメイン>.workers.dev）
 #   test ブランチ：試験用（minimalist-online-test.<サブドメイン>.workers.dev．部屋のデータは本番と別）
-# 手動実行（Run workflow）も main か test のときだけデプロイする（ほかのブランチを本番に出さないため）
+#   slide ブランチ：スライド版の試作（minimalist-online-slide.<サブドメイン>.workers.dev）
+# 手動実行（Run workflow）も main・test・slide のときだけデプロイする（ほかのブランチを本番に出さないため）
 name: deploy
 
 on:
   push:
-    branches: [main, test]
+    branches: [main, test, slide]
   workflow_dispatch:
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test' || github.ref == 'refs/heads/slide'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,4 +28,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: ${{ github.ref == 'refs/heads/main' && 'deploy' || 'deploy --name minimalist-online-test' }}
+          command: ${{ github.ref == 'refs/heads/main' && 'deploy' || github.ref == 'refs/heads/slide' && 'deploy --name minimalist-online-slide' || 'deploy --name minimalist-online-test' }}
