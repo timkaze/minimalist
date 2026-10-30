@@ -8,6 +8,7 @@ import {
 } from './engine';
 import { SBOT_LABELS, SPRESETS, chooseSlideAction } from './bot';
 import { randomSeed } from '../engine/rng';
+import { colColor, colInk, needBadges, rowColor } from './colors';
 
 const app = document.getElementById('app')!;
 const store = {
@@ -93,11 +94,11 @@ function boardHTML(p: SPlayer, big: boolean, clickCells: { x: number; y: number 
   const w = p.walk;
   const active = s!.players[s!.current] === p;
   let h = `<div class="board ${big ? 'big' : 'mini'}"><div class="corner"></div>`;
-  for (let x = X_MIN; x <= X_MAX; x++) h += `<div class="colh ${x > 0 ? 'imp' : x < 0 ? 'calm' : ''}">${big ? colLabel(x) : x}${big && x > 0 ? `<small>額+${bonus(x, 'buy')}・${overshoot(x) === Infinity ? '滑る' : overshoot(x) + '余分'}</small>` : ''}${big && x < 0 ? `<small>量+${bonus(x, 'remove')}${canAdjust(x) ? '・調整' : ''}${canPeek(x) ? '・見る' : ''}</small>` : ''}</div>`;
+  for (let x = X_MIN; x <= X_MAX; x++) h += `<div class="colh" style="--hb:${colColor(x) ?? 'transparent'};color:${colInk(x)}">${big ? colLabel(x) : x}${big && x > 0 ? `<small>額+${bonus(x, 'buy')}・${overshoot(x) === Infinity ? '滑る' : overshoot(x) + '余分'}</small>` : ''}${big && x < 0 ? `<small>量+${bonus(x, 'remove')}${canAdjust(x) ? '・調整' : ''}${canPeek(x) ? '・見る' : ''}</small>` : ''}</div>`;
   const b = s!.board;
   for (let y = yMax(b); y >= yMin(b); y--) {
     const e = rowEffect(y, b);
-    h += `<div class="rowh ${e.kind}">${big ? rowLabel(y) : e.kind === 'none' ? 'S' : e.amount}${big && e.kind !== 'none' ? `<small>${e.kind === 'buy' ? '額' : '量'}${e.amount}${isDeep(y, b) ? '＋捨札1' : ''}</small>` : ''}</div>`;
+    h += `<div class="rowh ${e.kind}" style="--hb:${rowColor(e.kind, e.amount)}">${big ? rowLabel(y) : e.kind === 'none' ? 'S' : e.amount}${big && e.kind !== 'none' ? `<small>${e.kind === 'buy' ? '額' : '量'}${e.amount}${isDeep(y, b) ? '＋捨札1' : ''}</small>` : ''}</div>`;
     for (let x = X_MIN; x <= X_MAX; x++) {
       const pos = { x, y };
       const cls = [e.kind, x > 0 ? 'imp' : x < 0 ? 'calm' : ''];
@@ -107,7 +108,10 @@ function boardHTML(p: SPlayer, big: boolean, clickCells: { x: number; y: number 
       const block = isCatch(w, pos) ? `<span class="block" title="積み木（入るとそこで止まる）"></span>` : '';
       const pawn = active && samePos(w.pos, pos) ? `<span class="pawn"></span>` : '';
       const start = x === 0 && y === 0 ? `<span class="start">S</span>` : '';
-      h += `<div class="cell ${cls.join(' ')}" data-x="${x}" data-y="${y}">${start}${block}${pawn}</div>`;
+      const pw = cellPower(pos, b);
+      const amt = big && pw.kind !== 'none' ? `<span class="amt">${pw.kind === 'buy' ? '額' : '量'}${pw.amount}</span>` : '';
+      const tint = `--row:${rowColor(e.kind, e.amount)};--col:${colColor(x) ?? rowColor(e.kind, e.amount)}`;
+      h += `<div class="cell ${cls.join(' ')}" style="${tint}" data-x="${x}" data-y="${y}">${start}${amt}${block}${pawn}</div>`;
     }
   }
   return h + `</div>`;
@@ -122,7 +126,7 @@ function cardHTML(c: SCard | { kind: SKind; fav?: boolean; id?: number }, extra 
   return `<div class="card ${cls} ${fav ? 'favc' : ''} ${d.cost === null ? 'startc' : ''}" ${'id' in c && c.id ? `data-id="${c.id}"` : ''} ${extra}>
     <div class="ct"><b>${fav ? '★' : ''}${d.name}</b>${d.cost !== null ? `<span class="cost">${d.cost}</span>` : ''}</div>
     <div class="cm">${esc(fav ? 'お気に入り．好きな向きに1' : d.text)}</div>
-    ${needText(c.kind) && !fav ? `<div class="need">${needText(c.kind)}</div>` : ''}
+    ${needText(c.kind) && !fav ? `<div class="need">${needBadges(c.kind)}</div>` : ''}
     <div class="cw">重さ${d.weight}</div></div>`;
 }
 
