@@ -97,7 +97,9 @@ export function colMod(x: number, kind: 'buy' | 'remove', cols: Rules['cols']): 
 export const SPECIAL_CELLS: { x: number; y: number; fx: Fx }[] = [
   { x: 0, y: -2, fx: { kind: 'buy', amount: 2 } }, { x: -2, y: -1, fx: { kind: 'buy', amount: 2 } },
   { x: -1, y: -3, fx: { kind: 'buy', amount: 2 } }, { x: 1, y: -4, fx: { kind: 'buy', amount: 3 } },
-  { x: -1, y: 1, fx: GACHA_FX }, { x: 2, y: 0, fx: GACHA_FX }, { x: -2, y: 3, fx: GACHA_FX },
+  // 理性1列の福袋は理性2列（同じ行）へ移し，元のマスは額3にした
+  { x: -1, y: 1, fx: { kind: 'buy', amount: 3 } },
+  { x: -2, y: 1, fx: GACHA_FX }, { x: 2, y: 0, fx: GACHA_FX }, { x: -2, y: 3, fx: GACHA_FX },
   { x: 1, y: -1, fx: LUCKY_FX }, { x: -2, y: -2, fx: LUCKY_FX },
 ];
 export const specialAt = (pos: Pos, b: OBoard, rules: Rules): Fx | undefined =>
@@ -187,6 +189,8 @@ export interface OPlayer {
   /** 片付けた跡（ルールで壁にしたときだけ使う） */
   traces: Pos[];
   removed: number;
+  /** 排除したタイル（終了時に見せる．古い保存データには無い） */
+  gone?: Tile[];
   bought: number;
   finished: boolean;
   /** 決心チップ */
@@ -237,6 +241,9 @@ export function newOverlayGame(
     const bag: Tile[] = [];
     for (const [k, n] of startingBag(rules.hesCount)) for (let i = 0; i < n; i++) bag.push({ id: s.nextId++, kind: k });
     shuffle(bag, s);
+    // 初期の袋のためらい1枚は必ず一番下（最後に引かれる位置．引くのは配列の末尾から）に置く
+    const hi = bag.findIndex(t => t.kind === 'HES');
+    if (hi >= 0) bag.unshift(bag.splice(hi, 1)[0]);
     s.players.push({ name: p.name, isBot: !!p.isBot, botType: p.botType, bag, discard: [], placed: [], pos: { x: 0, y: 0 }, hes: 0, perms: [], traces: [], removed: 0, bought: 0, finished: false, chips: 0 });
   }
   s.log.push('ゲーム開始');
@@ -385,6 +392,7 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
     p.bought++;
   }
   const gone = new Set(a.roomba != null ? [...ids, a.roomba] : ids);
+  (p.gone ??= []).push(...[...p.placed, ...p.discard].filter(c => gone.has(c.id)).map(c => ({ id: c.id, kind: c.kind })));
   p.placed = p.placed.filter(c => !gone.has(c.id));
   p.discard = p.discard.filter(c => !gone.has(c.id));
   p.removed += gone.size;

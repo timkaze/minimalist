@@ -21,10 +21,27 @@ export const OPRESETS: Record<string, OGenome> = {
   swing: { greed: 1.0, buy: [{ kind: 'SWING', cap: 2 }, { kind: 'MEMO', cap: 1 }, { kind: 'DOWN2', cap: 1 }, { kind: 'REST', cap: 1 }, { kind: 'DOWN', cap: 1 }] },
   mixed: { greed: 1.0, buy: [{ kind: 'DOWN2', cap: 1 }, { kind: 'REST', cap: 1 }, { kind: 'CALM', cap: 1 }, { kind: 'BR', cap: 1 }, { kind: 'TREAT', cap: 1 }, { kind: 'DOWN', cap: 2 }] },
   nobuy: { greed: 1.0, buy: [{ kind: 'DOWN', cap: 2 }] },
+  // 学習AI（training/overlay-train.ts．軸ごとに買ってよいタイルを絞った共進化学習．固定型に大差で勝つ）．ランダムで登場するのはこの6つ
+  aiFree: { greed: 1.40, buy: [{ kind: 'ROOMBA', cap: 1 }, { kind: 'COMPASS', cap: 1 }, { kind: 'BIGDAY', cap: 1 }, { kind: 'RUSH', cap: 2 }, { kind: 'DOWN2', cap: 3 }, { kind: 'BR', cap: 2 }, { kind: 'DRAG', cap: 2 }, { kind: 'BREATH', cap: 2 }, { kind: 'CALM', cap: 1 }, { kind: 'REST', cap: 1 }, { kind: 'BAG', cap: 1 }, { kind: 'KODAWARI', cap: 1 }] },
+  aiFav: { greed: 1.42, buy: [{ kind: 'ROOMBA', cap: 1 }, { kind: 'BIGDAY', cap: 1 }, { kind: 'COMPASS', cap: 1 }, { kind: 'DOWN2', cap: 3 }, { kind: 'RUSH', cap: 3 }, { kind: 'BR', cap: 2 }, { kind: 'DOWN', cap: 1 }] },
+  aiLight: { greed: 1.19, buy: [{ kind: 'LIGHT', cap: 1 }, { kind: 'DRAG', cap: 3 }, { kind: 'DOWN2', cap: 3 }, { kind: 'CALM', cap: 3 }, { kind: 'BR', cap: 1 }, { kind: 'DOWN', cap: 3 }] },
+  aiClean: { greed: 1.51, buy: [{ kind: 'DOWN2', cap: 1 }, { kind: 'CALM', cap: 3 }, { kind: 'DOWN', cap: 3 }, { kind: 'CLEAN', cap: 1 }] },
+  aiSwing: { greed: 1.53, buy: [{ kind: 'DOWN2', cap: 3 }, { kind: 'DOWN', cap: 3 }, { kind: 'CLEAN', cap: 1 }] },
+  aiRush: { greed: 1.27, buy: [{ kind: 'CALM', cap: 1 }, { kind: 'BR', cap: 1 }, { kind: 'DOWN', cap: 3 }] },
 };
 export const OBOT_LABELS: Record<string, string> = {
-  light: '身軽型', rest: 'ひと休み型', fav: 'お気に入り型', swing: '往復型', mixed: 'バランス型', nobuy: '最小限型',
+  random: 'ランダム', light: '身軽型', rest: 'ひと休み型', fav: 'お気に入り型', swing: '往復型', mixed: 'バランス型', nobuy: '最小限型',
+  aiFree: '万能AI', aiFav: 'お気に入りAI', aiLight: '身軽AI', aiClean: '大掃除AI', aiSwing: '往復AI', aiRush: '速攻AI',
 };
+
+/** 「ランダム」：ゲーム開始時に，学習済みのAI（ai〜）の中からくじで決める（学習済みが無ければ最小限型以外から） */
+export const RANDOM_BOT = 'random';
+export function resolveBot(t: string | undefined, rand: () => number = Math.random): string {
+  if (t && t !== RANDOM_BOT && OPRESETS[t]) return t;
+  const learned = Object.keys(OPRESETS).filter(k => k.startsWith('ai'));
+  const pool = learned.length ? learned : Object.keys(OPRESETS).filter(k => k !== 'nobuy');
+  return pool[Math.floor(rand() * pool.length)];
+}
 
 /** 先読みの深さ（今の1枚のあとに何枚先まで読むか） */
 export let LOOK = 2;

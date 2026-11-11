@@ -1,0 +1,41 @@
+{
+ "axis": "free",
+ "fitness": 2.51,
+ "genome": {
+  "greed": 1.3903721213690003,
+  "buy": [
+   {
+    "kind": "ROOMBA",
+    "cap": 1
+   },
+   {
+    "kind": "BIGDAY",
+    "cap": 1
+   },
+   {
+    "kind": "COMPASS",
+    "cap": 1
+   },
+   {
+    "kind": "RUSH",
+    "cap": 3
+   },
+   {
+    "kind": "DOWN2",
+    "cap": 2
+   },
+   {
+    "kind": "BR",
+    "cap": 1
+   },
+   {
+    "kind": "DRAG",
+    "cap": 3
+   },
+   {
+    "kind": "BREATH",
+    "cap": 3
+   }
+  ]
+ }
+}

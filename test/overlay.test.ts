@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { OKind, TILES } from '../src/overlay/tiles';
 import { OState, Rules, applyOverlay, hereFx, isDone, newOverlayGame, ownedTiles, printedFx, OBOARDS, DEFAULT_RULES } from '../src/overlay/engine';
-import { OPRESETS, playOverlayTurn } from '../src/overlay/bot';
+import { OPRESETS, playOverlayTurn, resolveBot } from '../src/overlay/bot';
 
 const game = (rules: Partial<Rules> = {}) => newOverlayGame([{ name: 'A' }, { name: 'B' }], 1, { rules });
 /** 現在の手番の人の袋を，引く順に指定する */
@@ -17,6 +17,49 @@ describe('オーバーレイ版', () => {
     const kinds = game().players[0].bag.map(c => c.kind).sort();
     expect(kinds).toEqual(['DOUBT', 'HES', 'HES', 'JUNK', 'WANT', 'WANT']);
     expect(game({ hesCount: 1 }).players[0].bag.length).toBe(5);
+  });
+
+  it('理性1列・物欲1行目は額3のマス（福袋は理性2列へ移した）', () => {
+    const s = game();
+    stack(s, 'DOUBT', 'WANT'); // (-1,1)
+    draw(s); draw(s);
+    expect(here(s)).toEqual({ kind: 'buy', amount: 3 });
+  });
+
+  it('初期の袋のためらい1枚は必ず一番下（最後に引かれる）に置かれる', () => {
+    for (const hesCount of [1, 2, 3]) for (let seed = 1; seed <= 30; seed++) {
+      const s = newOverlayGame([{ name: 'A' }, { name: 'B' }], seed, { rules: { hesCount } });
+      for (const p of s.players) {
+        expect(p.bag[0].kind).toBe('HES'); // 引くのは末尾から，いちばん最後
+        expect(p.bag.filter(c => c.kind === 'HES').length).toBe(hesCount);
+      }
+    }
+  });
+
+  it('ボットの「ランダム」は学習AI6種からくじで決まり，どのAIも最後まで対戦できる', () => {
+    const ai = Object.keys(OPRESETS).filter(k => k.startsWith('ai'));
+    expect(ai.length).toBe(6);
+    const seen = new Set<string>();
+    for (let i = 0; i < 200; i++) seen.add(resolveBot('random', () => (i * 0.6180339) % 1));
+    expect([...seen].sort()).toEqual([...ai].sort());
+    expect(resolveBot('light')).toBe('light');
+    for (const k of ai) {
+      const s = newOverlayGame([{ name: 'A' }, { name: 'B' }], 7, {});
+      let guard = 0;
+      while (s.phase === 'play' && guard++ < 400) playOverlayTurn(s, [OPRESETS[k], OPRESETS[k]]);
+      expect(s.phase).toBe('over');
+    }
+  });
+
+  it('排除したタイルが記録される（終了時に全員分を見せるため）', () => {
+    const s = newOverlayGame([{ name: 'A' }, { name: 'B' }], 3, {});
+    let guard = 0;
+    while (s.phase === 'play' && guard++ < 400) playOverlayTurn(s, [OPRESETS.aiFree, OPRESETS.aiFav]);
+    expect(s.phase).toBe('over');
+    for (const p of s.players) {
+      expect((p.gone ?? []).length).toBe(p.removed);
+      expect(p.removed).toBeGreaterThan(0);
+    }
   });
 
   it('少なくとも1枚引く', () => {
@@ -155,14 +198,14 @@ describe('オーバーレイ版', () => {
 
   it('福袋：共有の福袋から1枚もらう．運試し：袋から当たりが出るまでに表にした枚数が量になる', () => {
     const s = game();
-    stack(s, 'DOUBT', 'WANT'); // (-1,1) は福袋
-    draw(s); draw(s);
+    stack(s, 'DOUBT', 'DOUBT', 'WANT'); // (-2,1) は福袋（理性1列から理性2列へ移した）
+    draw(s); draw(s); draw(s);
     expect(here(s).kind).toBe('gacha');
     const pool = s.gacha.length, p = s.players[0];
     applyOverlay(s, 0, { type: 'stop' });
     applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [] });
     expect(s.gacha.length).toBe(pool - 1);
-    expect(p.discard.length).toBe(3);
+    expect(p.discard.length).toBe(4);
     const t = game();
     const q = t.players[0];
     stack(t, 'RUSH', 'DOWN', 'WANT', 'WANT'); // (1,-1) は運試し

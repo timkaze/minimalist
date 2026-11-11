@@ -45,7 +45,12 @@ h3 { margin: 18px 0 8px; font-size: 13px; letter-spacing: .08em; color: #c8cede;
 .tile .fx small { font-size: .5em; font-weight: 700; color: inherit; margin-right: .08em; opacity: .85; }
 .tile.k-buy .fx { color: #1d5fc4; } .tile.k-remove .fx { color: #c93a2e; } .tile .fx.none { color: #8a8474; }
 .tile.k-buy { background: linear-gradient(145deg, #f4f7fd, #d3e2f8); } .tile.k-remove { background: linear-gradient(145deg, #fdf3f1, #f6d5cf); }
-.tile.k-perm { background: linear-gradient(145deg, #fff3c4, #f2c75a); } .tile.k-perm .fx { color: #8a5a00; }
+.tile.k-perm { background: radial-gradient(circle at 35% 30%, #fff8d6, #f2c75a 70%, #d9a52e); } .tile.k-perm .fx { color: #8a5a00; }
+/* お気に入りは袋に入らない持ち物なので，四角いタイルと違う「メダル」の形にする */
+.tile.k-perm { border-radius: 50%; overflow: visible; box-shadow: 0 0 0 .07em #fff3c4, 0 0 0 .15em #8a5a00, 0 2px 6px #0007; }
+.tile.k-perm .nm { opacity: 1; font-weight: 700; }
+.tile.k-perm .c-cost { left: -.15em; top: -.15em; } .tile.k-perm .c-imp { right: -.3em; top: -.1em; }
+.tile.k-perm .cnt { right: -.1em; top: -.1em; }
 .tile .nm { font-size: .44em; font-weight: 600; margin-top: .25em; white-space: nowrap; letter-spacing: -.04em; opacity: .8; }
 .tile.stay::after { content: ''; position: absolute; inset: 9%; border: .08em dashed #0004; border-radius: 14%; }
 .tile .ar { position: absolute; width: 0; height: 0; border: .34em solid transparent; }
@@ -113,7 +118,26 @@ label.ck:has(input:not(:checked)) .info { opacity: .4; }
 
 /* ---- ゲーム画面 ---- */
 header { display: flex; gap: 12px; align-items: center; padding: 8px 16px; background: #0d1016cc; border-bottom: 1px solid var(--line); flex-wrap: wrap; backdrop-filter: blur(6px); }
-header .round { background: var(--surface2); border-radius: 20px; padding: 1px 12px; font-weight: 700; }
+header .round { background: var(--surface2); border-radius: 20px; padding: 1px 14px; font-weight: 800; font-size: 16px; color: var(--gold); }
+.banner .lap, .seat .tn { font-weight: 700; color: var(--gold); }
+.banner.mine .lap { color: #5a4208; background: #fff3c4aa; border-radius: 10px; padding: 0 8px; }
+/* ゲーム終了：全員の残りと排除したタイル */
+.finalall { display: grid; gap: 8px; margin: 8px 0 12px; }
+.fin { background: var(--surface2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.fin.win { border-color: var(--gold); }
+.fin .fh { font-size: 14px; margin-bottom: 4px; }
+.fin .fl { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; font-size: 12px; }
+.fin .fl > .muted { flex: none; width: 5.5em; padding-top: 4px; }
+.fin .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+/* 向き選択：十字キーの並び．引くボタンと違う色にし，出た直後は0.7秒だけ押せない（押し間違い防止） */
+.dpad { display: grid; grid-template-columns: repeat(3, 118px); gap: 8px; justify-content: center; margin: 14px auto 4px; padding: 12px; border: 1px solid #5aa2ff55; border-radius: 14px; background: #5aa2ff14; animation: armed .7s steps(1, end); }
+@keyframes armed { from { pointer-events: none; opacity: .55; } to { pointer-events: auto; opacity: 1; } }
+button.dirbtn { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 6px; border-radius: 10px; background: linear-gradient(180deg, #2f4a73, #243958); border-color: #5aa2ff; color: #e8f0ff; }
+button.dirbtn:hover:not(:disabled) { background: linear-gradient(180deg, #3a5c91, #2c4670); }
+button.dirbtn b { font-size: 26px; line-height: 1; } button.dirbtn small { font-size: 11px; font-weight: 500; opacity: .85; color: inherit; }
+/* 「ここで止める」は「タイルを引く」から離し，目立たない見た目にして押し間違いを防ぐ */
+.stopzone { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 34px; padding-top: 10px; border-top: 1px dashed var(--line); font-size: 12px; }
+button.stopbtn { min-width: 110px; padding: 6px 12px; font-size: 13px; opacity: .85; }
 header #sound { margin-left: auto; } header button { padding: 4px 10px; font-size: 12px; }
 .banner { text-align: center; padding: 9px 12px; font-size: 17px; font-weight: 800; letter-spacing: .08em; background: var(--surface); border-bottom: 1px solid var(--line); color: #c8cede; }
 .banner small { margin-left: 12px; font-size: 12px; letter-spacing: 0; }

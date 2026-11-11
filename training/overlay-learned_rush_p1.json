@@ -1,0 +1,21 @@
+{
+ "axis": "rush",
+ "fitness": 2.02125,
+ "genome": {
+  "greed": 1.2668340519769117,
+  "buy": [
+   {
+    "kind": "CALM",
+    "cap": 1
+   },
+   {
+    "kind": "BR",
+    "cap": 1
+   },
+   {
+    "kind": "DOWN",
+    "cap": 3
+   }
+  ]
+ }
+}

@@ -1,0 +1,33 @@
+{
+ "axis": "light",
+ "fitness": 1.998333333333333,
+ "genome": {
+  "greed": 1.2327809863723813,
+  "buy": [
+   {
+    "kind": "LIGHT",
+    "cap": 2
+   },
+   {
+    "kind": "DOWN2",
+    "cap": 1
+   },
+   {
+    "kind": "DRAG",
+    "cap": 2
+   },
+   {
+    "kind": "CALM",
+    "cap": 2
+   },
+   {
+    "kind": "DOWN",
+    "cap": 3
+   },
+   {
+    "kind": "BR",
+    "cap": 1
+   }
+  ]
+ }
+}

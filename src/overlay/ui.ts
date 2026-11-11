@@ -9,7 +9,7 @@ import {
   chipNeed, dirsOf, discardLimit, envOf, favCost, hereFx, isDeep, isLastCard, newOverlayGame, normRules, ownedTiles, printedFx, removeLoad, samePos,
   stackAt, step, tileFx, topTile, yMax, yMin,
 } from './engine';
-import { OBOT_LABELS, OPRESETS, chooseOverlayAction } from './bot';
+import { OBOT_LABELS, OPRESETS, RANDOM_BOT, chooseOverlayAction, resolveBot } from './bot';
 import { randomSeed } from '../engine/rng';
 
 const app = document.getElementById('app')!;
@@ -24,6 +24,11 @@ let timer = 0;
 const sel = { buy: [] as OKind[], remove: new Set<number>(), roomba: null as number | null };
 const clearSel = () => { sel.buy = []; sel.remove.clear(); sel.roomba = null; };
 let local: { rules: Rules; market: OKind[] } | null = null;
+let localBots: string[] = [];
+/** ローカル対戦の参加者．ランダムのボットはここでくじを引く（名前は型を明かさない） */
+const localSetup = (name: string) => [{ name }, ...localBots.map((t, i) => t === RANDOM_BOT
+  ? { name: `ボット${i + 1}（ランダム）`, isBot: true, botType: resolveBot(t) }
+  : { name: OBOT_LABELS[t], isBot: true, botType: t })];
 
 const esc = (t: string) => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
@@ -243,7 +248,7 @@ function lobby() {
   const room = net!.room;
   if (!room) { app.innerHTML = `<main class="setup"><p>部屋 ${esc(net!.code)} に接続しています…</p><button id="back">戻る</button></main>`; bindBack(); return; }
   const link = `${location.origin}${location.pathname}?room=${room.code}`;
-  const opts = Object.keys(OPRESETS).map(k => `<option value="${k}">${OBOT_LABELS[k]}</option>`).join('');
+  const opts = [RANDOM_BOT, ...Object.keys(OPRESETS)].map(k => `<option value="${k}">${OBOT_LABELS[k]}</option>`).join('');
   const prev = document.activeElement as HTMLInputElement | null;
   const caret = prev?.id === 'myname' ? prev.selectionStart : null;
   const named = !!store.get('name');
@@ -303,8 +308,8 @@ function setup() {
   clearTimeout(timer);
   me = 0;
   document.title = 'ミニマリスト オーバーレイ版';
-  const saved = (store.get('bots') ?? 'light,mixed').split(',');
-  const opts = (v: string) => Object.keys(OPRESETS).map(k => `<option value="${k}" ${k === v ? 'selected' : ''}>${OBOT_LABELS[k]}</option>`).join('');
+  const saved = (store.get('bots.v2') ?? `${RANDOM_BOT},${RANDOM_BOT}`).split(',');
+  const opts = (v: string) => [RANDOM_BOT, ...Object.keys(OPRESETS)].map(k => `<option value="${k}" ${k === v ? 'selected' : ''}>${OBOT_LABELS[k]}</option>`).join('');
   app.innerHTML = `
   <main class="setup">
     <h1 class="logo">ミニマリスト <span>オーバーレイ版</span></h1>
@@ -337,13 +342,14 @@ function setup() {
   app.querySelector<HTMLButtonElement>('#start')!.onclick = () => {
     const name = rawName() || 'あなた';
     let botTypes = [...app.querySelectorAll<HTMLSelectElement>('#bots select')].map(x => x.value).filter(Boolean);
-    if (!botTypes.length) botTypes = ['light'];
+    if (!botTypes.length) botTypes = [RANDOM_BOT];
     const o = readOptions();
     if (!o) return;
     store.set('name', name);
-    store.set('bots', botTypes.join(','));
+    store.set('bots.v2', botTypes.join(','));
     local = { rules: o.rules, market: o.market };
-    s = newOverlayGame([{ name }, ...botTypes.map(t => ({ name: OBOT_LABELS[t], isBot: true, botType: t }))], randomSeed(), local);
+    localBots = botTypes;
+    s = newOverlayGame(localSetup(name), randomSeed(), local);
     clearSel();
     render();
   };
@@ -418,12 +424,19 @@ function marketHTML(buying: boolean, x = 0, left = Infinity): string {
   }).join('');
 }
 
+/** 向きの選択：十字キーの並び（↑は上，←は左，→は右，↓は下）．「タイルを引く」と違う見た目・位置にし，表示直後の誤クリックを防ぐ */
+function dpadHTML(dirs: Dir[], sub: (d: Dir) => string): string {
+  const rows = (['U', 'LR', 'D'] as const).map(r => dirs.filter(d => r.includes(d))).filter(r => r.length);
+  const col: Record<Dir, number> = { U: 2, D: 2, L: 1, R: 3 };
+  return `<div class="dpad">${rows.map((r, i) => r.map(d => `<button data-dir="${d}" class="dirbtn" style="grid-row:${i + 1};grid-column:${col[d]}"><b>${ARROW[d]}</b><small>${esc(sub(d))}</small></button>`).join('')).join('')}</div>`;
+}
+
 function turnBanner(): string {
   const st = s!;
   if (st.phase === 'over') return `<div class="banner over">ゲーム終了</div>`;
   const p = cur();
-  if (st.current === me) return `<div class="banner mine"><span class="tri">▶</span> あなたの番です <small>${st.turn === 'resolve' ? '止まったマスの効果を使う' : st.turn === 'branch' ? '出る向きを選ぶ' : 'タイルを引くか，止める'}</small></div>`;
-  return `<div class="banner"><span class="dot p${st.current}"></span>${esc(p.name)}の番 <small>${me >= 0 ? `あなたの番まであと${(me - st.current + st.players.length) % st.players.length}人` : '観戦中'}</small></div>`;
+  if (st.current === me) return `<div class="banner mine"><span class="tri">▶</span> あなたの番です <small class="lap">${st.round}周目</small><small>${st.turn === 'resolve' ? '止まったマスの効果を使う' : st.turn === 'branch' ? '出る向きを選ぶ' : 'タイルを引くか，止める'}</small></div>`;
+  return `<div class="banner"><span class="dot p${st.current}"></span>${esc(p.name)}の番 <small class="lap">${st.round}周目</small><small>${me >= 0 ? `あなたの番まであと${(me - st.current + st.players.length) % st.players.length}人` : '観戦中'}</small></div>`;
 }
 
 function render() {
@@ -436,7 +449,7 @@ function render() {
   const human = me >= 0 ? st.players[me] : null;
   notifyTurn(mine);
   app.innerHTML = `
-  <header><b class="logo sm">ミニマリスト <span>オーバーレイ版</span></b> <span class="round">ラウンド ${st.round}</span>
+  <header><b class="logo sm">ミニマリスト <span>オーバーレイ版</span></b> <span class="round" title="全員が1回ずつ手番をすると1周">${st.round}周目</span>
     ${net ? `<span class="muted">部屋 ${esc(net.code)}</span>` : ''}
     <button id="sound" title="自分の番の合図音">${soundOn() ? '🔔 音あり' : '🔕 音なし'}</button>
     <button id="quit">${net ? '部屋を出る' : 'やめる'}</button></header>
@@ -444,6 +457,7 @@ function render() {
   ${st.log.length > 1 ? `<div class="lastlog">直前：${esc(st.log[st.log.length - 1])}</div>` : ''}
   <div class="seatsbar">${st.players.map((q, i) => `<div class="seat ${i === st.current && st.phase === 'play' ? 'now' : ''} ${i === me ? 'you' : ''}">
       <span class="dot p${i}"></span><b>${esc(q.name)}</b>${i === me ? '<em>あなた</em>' : ''}${q.finished ? ' ✓' : ''}${st.winners.includes(i) ? ' 🏆' : ''}
+      <small class="tn">${st.phase === 'over' ? `${st.round}回手番` : i === st.current ? `${st.round}回目の手番中` : `手番${st.round - 1 + (i < st.current ? 1 : 0)}回済`}</small>
       <small>持ち物${ownedTiles(q).length}・排除${q.removed}${st.rules.chips ? `・決心<span class="cg">${'◆'.repeat(q.chips ?? 0) || '0'}</span>` : ''}${q.perms.length ? `・★${q.perms.map(k => TILES[k].name).join('・')}` : ''}</small></div>`).join('')}</div>
   <main class="game ${mine ? 'myturn' : ''}">
     <section class="left">
@@ -479,7 +493,11 @@ function controlsHTML(): string {
   if (st.phase === 'over') {
     const host = !net || net.room?.isHost;
     return `<p class="big">${st.winners.length ? `${st.winners.map(i => esc(st.players[i].name)).join('・')}の${st.winners.length > 1 ? '共同勝利' : '勝利'}！` : '引き分け'}</p>
-      <p>${st.players.map(q => `${esc(q.name)}：排除${q.removed}枚・お気に入り${favCost(q)}`).join('<br>')}</p>
+      <div class="finalall">${st.players.map((q, i) => `<div class="fin ${st.winners.includes(i) ? 'win' : ''}">
+        <div class="fh"><span class="dot p${i}"></span><b>${esc(q.name)}</b>${st.winners.includes(i) ? ' 🏆' : ''}　排除${q.removed}枚・お気に入り${favCost(q)}</div>
+        <div class="fl"><span class="muted">残り${ownedTiles(q).length}枚</span><div class="chips">${chipsHTML(ownedTiles(q))}</div></div>
+        <div class="fl"><span class="muted">排除${(q.gone ?? []).length}枚</span><div class="chips">${chipsHTML(q.gone ?? [])}</div></div>
+        ${q.perms.length ? `<div class="fl"><span class="muted">お気に入り</span><div class="chips">${q.perms.map(k => tileHTML(k, { cls: 'chip' })).join('')}</div></div>` : ''}</div>`).join('')}</div>
       ${host ? `<button id="again" class="primary">もう一度（同じルール）</button> <button id="tolobby">ルールを変える</button>` : '<p class="muted">ホストが再戦を選べます</p>'}`;
   }
   const p = cur();
@@ -491,13 +509,13 @@ function controlsHTML(): string {
       const can = canDraw(p, st.rules);
       const must = !p.placed.length && can;
       return `<p>${must ? '少なくとも1枚引きます' : `引くと今いるマスにタイルを置いて出ます．止めると<b>${fxWord(here)}</b>`}</p>
-        <div class="btns"><button id="draw" class="primary big" ${can ? '' : 'disabled'}>タイルを引く<small>袋 ${p.bag.length}${p.bag.length ? '' : can ? '（捨て山を戻す）' : ''}</small></button>
-        <button id="stop" class="big" ${must ? 'disabled' : ''}>ここで止める<small>${fxWord(here)}</small></button></div>`;
+        <div class="btns"><button id="draw" class="primary big" ${can ? '' : 'disabled'}>タイルを引く<small>袋 ${p.bag.length}${p.bag.length ? '' : can ? '（捨て山を戻す）' : ''}</small></button></div>
+        <div class="stopzone"><span class="muted">引かずに手番を切り上げる場合：</span><button id="stop" class="big stopbtn" ${must ? 'disabled' : ''}>ここで止める<small>${fxWord(here)}</small></button></div>`;
     }
     case 'branch': {
       const tile = p.placed[p.placed.length - 1];
       return `<p><b>${TILES[tile.kind].name}</b>を置きました．どちらへ出ますか（盤の光っているマスでも選べます）</p>
-        <div class="btns">${dirsOf(tile.kind, env).map(d => `<button data-dir="${d}" class="primary big">${ARROW[d]}<small>${canMove(env, p.pos, d) ? fxWord(hereFxAt(p, step(p.pos, d))) : '出られない（ここに残る）'}</small></button>`).join('')}</div>`;
+        ${dpadHTML(dirsOf(tile.kind, env), d => canMove(env, p.pos, d) ? fxWord(hereFxAt(p, step(p.pos, d))) : '出られない（ここに残る）')}`;
     }
     case 'resolve': {
       if (st.rules.lastCard && isLastCard(p)) {
@@ -560,7 +578,7 @@ function bindControls() {
   const q = <T extends HTMLElement>(x: string) => app.querySelector<T>(x);
   q('#again')?.addEventListener('click', () => {
     if (net) return send({ t: 'restart' });
-    s = newOverlayGame(s!.players.map(p => ({ name: p.name, isBot: p.isBot, botType: p.botType })), randomSeed(), local ?? {});
+    s = newOverlayGame(localSetup(s!.players[0].name), randomSeed(), local ?? {});
     clearSel();
     render();
   });

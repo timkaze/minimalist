@@ -1,0 +1,37 @@
+{
+ "axis": "fav",
+ "fitness": 2.06875,
+ "genome": {
+  "greed": 1.4208435207954604,
+  "buy": [
+   {
+    "kind": "ROOMBA",
+    "cap": 1
+   },
+   {
+    "kind": "BIGDAY",
+    "cap": 1
+   },
+   {
+    "kind": "COMPASS",
+    "cap": 1
+   },
+   {
+    "kind": "DOWN2",
+    "cap": 3
+   },
+   {
+    "kind": "RUSH",
+    "cap": 3
+   },
+   {
+    "kind": "BR",
+    "cap": 2
+   },
+   {
+    "kind": "DOWN",
+    "cap": 1
+   }
+  ]
+ }
+}

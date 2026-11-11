@@ -5,7 +5,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { randomSeed } from '../src/engine/rng';
 import { marketFromChoice } from '../src/overlay/tiles';
 import { ORuleError as SRuleError, OState as SState, Rules, applyOverlay, newOverlayGame, normRules } from '../src/overlay/engine';
-import { OBOT_LABELS as SBOT_LABELS, OPRESETS as SPRESETS, chooseOverlayAction } from '../src/overlay/bot';
+import { OBOT_LABELS as SBOT_LABELS, OPRESETS as SPRESETS, RANDOM_BOT, chooseOverlayAction, resolveBot } from '../src/overlay/bot';
 import { OClientMsg as SClientMsg, OMAX_SEATS as SMAX_SEATS, ORoomInfo as SRoomInfo, OServerMsg as SServerMsg } from '../src/overlay/protocol';
 import type { OKind as SKind } from '../src/overlay/tiles';
 import type { Env } from './index';
@@ -89,7 +89,7 @@ export class OverlayRoom extends DurableObject<Env> {
           if (!isHost) throw new SRuleError('ボットを追加できるのはホストだけです');
           if (data.game) throw new SRuleError('ゲーム中は変更できません');
           if (data.seats.length >= SMAX_SEATS) throw new SRuleError('満席です');
-          const botType = SPRESETS[msg.botType] ? msg.botType : 'light';
+          const botType = msg.botType === RANDOM_BOT || SPRESETS[msg.botType] ? msg.botType : RANDOM_BOT;
           data.seats.push({ name: `ボット（${SBOT_LABELS[botType]}）`, isBot: true, botType });
           break;
         }
@@ -113,7 +113,7 @@ export class OverlayRoom extends DurableObject<Env> {
           }
           let market: SKind[];
           try { market = marketFromChoice(data.set === 'custom' ? data.tiles ?? [] : data.set ?? 'all'); } catch (e) { throw new SRuleError((e as Error).message); }
-          data.game = newOverlayGame(data.seats.map(s => ({ name: s.name, isBot: s.isBot, botType: s.botType })), randomSeed(), { rules: data.rules, market });
+          data.game = newOverlayGame(data.seats.map(s => ({ name: s.name, isBot: s.isBot, botType: s.isBot ? resolveBot(s.botType) : undefined })), randomSeed(), { rules: data.rules, market });
           break;
         }
         case 'toLobby': {

@@ -1,0 +1,25 @@
+{
+ "axis": "clean",
+ "fitness": 1.978333333333333,
+ "genome": {
+  "greed": 1.4170330188120714,
+  "buy": [
+   {
+    "kind": "DOWN2",
+    "cap": 3
+   },
+   {
+    "kind": "CALM",
+    "cap": 3
+   },
+   {
+    "kind": "REST",
+    "cap": 1
+   },
+   {
+    "kind": "DOWN",
+    "cap": 3
+   }
+  ]
+ }
+}
