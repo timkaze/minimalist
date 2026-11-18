@@ -109,8 +109,8 @@ export const BUYABLE: OKind[] = [...MARKET, ...EXPERIMENTAL];
 /** 盤に置くお気に入り（ルール favBoard のとき，取得したら自分の盤の1マスに置く） */
 export const FURN_KINDS: OKind[] = ['BIGDAY', 'ROOMBA'];
 
-/** 初期の袋（ためらいの枚数はルールで変わる） */
-export const startingBag = (hesCount: number): [OKind, number][] => [['WANT', 2], ['DOUBT', 1], ['JUNK', 1], ['HES', hesCount]];
+/** 初期の袋（ためらいの枚数はルールで変わる．big：多め＝欲しい3・迷い2・ガラクタ2） */
+export const startingBag = (hesCount: number, big = false): [OKind, number][] => [['WANT', big ? 3 : 2], ['DOUBT', big ? 2 : 1], ['JUNK', big ? 2 : 1], ['HES', hesCount]];
 
 export const fxText = (fx: Fx) => (fx.kind === 'buy' ? `額${fx.amount}` : fx.kind === 'remove' ? `量${fx.amount}` : fx.kind === 'gacha' ? '福袋' : fx.kind === 'lucky' ? '運試し' : '効果なし');
 

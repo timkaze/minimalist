@@ -60,8 +60,10 @@ export interface Rules {
    * その手番に上へタイルを置くと隠れる（一番上のタイルが有効）
    */
   favBoard: boolean;
+  /** 初期の袋を多めにする（欲しい3・迷い2・ガラクタ2＋ためらい．ゲームが長くなり，買ったタイルを使う回数が増える） */
+  bigBag: boolean;
 }
-export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 2, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: true, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false };
+export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 2, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: true, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false };
 
 /** 外から来たルールを整える（不正な値は既定に） */
 export function normRules(r: Partial<Rules> | undefined | null): Rules {
@@ -82,6 +84,7 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
     special: bool(x.special, d.special),
     chips: bool(x.chips, d.chips),
     favBoard: bool(x.favBoard, d.favBoard),
+    bigBag: bool(x.bigBag, d.bigBag),
   };
 }
 
@@ -275,7 +278,7 @@ export function newOverlayGame(
   for (const k of opts.market ?? MARKET) s.market[k] = UNLIMITED_KINDS.includes(k) ? UNLIMITED : Math.max(2, setup.length);
   for (const p of setup) {
     const bag: Tile[] = [];
-    for (const [k, n] of startingBag(rules.hesCount)) for (let i = 0; i < n; i++) bag.push({ id: s.nextId++, kind: k });
+    for (const [k, n] of startingBag(rules.hesCount, rules.bigBag)) for (let i = 0; i < n; i++) bag.push({ id: s.nextId++, kind: k });
     shuffle(bag, s);
     // 初期の袋のためらい1枚は必ず一番下（最後に引かれる位置．引くのは配列の末尾から）に置く
     const hi = bag.findIndex(t => t.kind === 'HES');
