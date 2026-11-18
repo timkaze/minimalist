@@ -5,6 +5,11 @@
 > オンライン対戦：部屋は Durable Object `OverlayRoom`（`worker/overlayRoom.ts`，`/api/overlay/:code/ws`）．通し確認は `npx wrangler dev --port 8799` のあと `npx tsx scripts/overlay-online-smoke.ts`．
 > 検証：`npx tsx training/overlay-report.ts 600`（`RULES='{"hes":"second"}'` でルール，`COSTS=REST=3` でコスト，`SET=intro` でセットを変える）．
 > 仕様と検証結果は Obsidian の `ミニマリスト_オーバーレイ版_仕様.md`（元のメモは `overlay_version.md`）．
+> **強いボット（探索＋評価関数）**：`src/overlay/search.ts`（手番の中を探索）と `src/overlay/value.ts`（持ち物から「あと何手番で終わるか」の分布を出す評価関数 V．重みは `src/overlay/value.json`）．方針と進み具合は Obsidian の `ミニマリスト_オーバーレイ版_改善方針.md`．
+> - 学習：`~/.venvs/dm-sim/bin/python training/overlay_fit.py --iters 6 --games 6000`（自己対戦でデータを作り PyTorch で当てはめる．ルールを変えたら `--rules '{…}' --tag 名前 --out 出力先`）
+> - 指標：`npx tsx training/overlay-metrics.ts 3000`（長さ・先手勝率・売り切れ・勝者の買い方の型・タイルの採用率．`POOL='search?obj=win,aiFree'` のようにボットを名前で指定）
+> - 対戦：`npx tsx training/overlay-duel.ts 'search?obj=win' aiFree 600`／狙い撃ちとタイルの強さ：`npx tsx training/overlay-probe.ts 400`／V とロールアウトの照合：`npx tsx training/overlay-rollout.ts`
+> - ボットの名前：`aiFree` など（`OPRESETS`）／`search?m=重み&obj=mean|win&b=葉の予算&ban=買わない種類&bonus=種類:上乗せ:枚数`
 > 以下はスライド版（slide ブランチ）と，前のルールのオンライン版（main ブランチ）の説明．
 >
 > **slide ブランチ**：トップページは「スライド版」の試作（手札なし．山札の上をめくってコマを動かす）．
