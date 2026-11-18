@@ -2,6 +2,7 @@
 //   ボットの名前：OPRESETS のキー（aiFree など）／ search（探索＋評価関数．search?m=重みのパス&obj=mean|win&b=葉の予算&bonus=TREAT:1.5）
 //   並列数は環境変数 JOBS（既定：コア数−2，最大14）
 
+import './overlay-variant';
 import { spawn } from 'node:child_process';
 import { cpus } from 'node:os';
 import { fileURLToPath } from 'node:url';

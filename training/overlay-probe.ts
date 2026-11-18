@@ -13,7 +13,8 @@ const GAMES = Number(process.argv[2] ?? 400);
 const MODEL = process.env.MODEL ?? DEFAULT_MODEL, OBJ = process.env.OBJ ?? 'mean', BONUS = process.env.BONUS ?? '2';
 const ONLY = (process.env.ONLY ?? '').split(',').filter(Boolean);
 const base = `search?m=${MODEL}&obj=${OBJ}`;
-const kinds = MARKET.filter(k => k !== 'DOWN' && (!ONLY.length || ONLY.includes(k)));
+// PROBE_GROUPS=1：まとめて買わない条件だけ回す（短い）
+const kinds = process.env.PROBE_GROUPS ? [] : MARKET.filter(k => k !== 'DOWN' && (!ONLY.length || ONLY.includes(k)));
 const GROUPS: Record<string, OKind[]> = ONLY.length ? {} : {
   'お気に入り全部': PERMS, 'ルンバ・大掃除の日': ['ROOMBA', 'BIGDAY'], '量のタイル全部': ['CALM', 'DOWN2', 'REST', 'CLEAN', 'MEMO'],
   '身軽・道連れ': ['LIGHT', 'DRAG'], '向きを選べるタイル': ['BR', 'BREATH', 'SWING', 'FREE'], '額のタイル': ['TREAT', 'UP2', 'RUSH'],
@@ -32,7 +33,7 @@ async function main() {
   const rate = (i: number) => res[i].reduce((n, g) => n + g.p.reduce((m, p, s) => m + (p.who === probes[i].spec ? winShare(g, s) : 0), 0), 0) / res[i].length;
   const bought = (i: number, k: OKind) => { const ps = res[i].flatMap(g => g.p.filter(p => p.who === probes[i].spec)); return ps.filter(p => (p.bought[k] ?? 0) > 0).length / ps.length; };
   console.log(`## 狙い撃ちとタイルの強さ（基準：${OBJ}，各${GAMES}試合の2人戦，±${f1(sePct(0.5, GAMES))}，${Math.round((Date.now() - t0) / 1000)}秒）`);
-  console.log('| タイル | 無理に買う側の勝率 | そのとき買った割合 | 基準が買う割合 | 買わない側の勝率 |\n|---|---|---|---|---|');
+  if (kinds.length) console.log('| タイル | 無理に買う側の勝率 | そのとき買った割合 | 基準が買う割合 | 買わない側の勝率 |\n|---|---|---|---|---|');
   let worst = 0;
   kinds.forEach((k, j) => {
     const fi = j * 2, bi = j * 2 + 1, f = rate(fi);
@@ -44,6 +45,6 @@ async function main() {
     console.log('\n| まとめて買わない | 買わない側の勝率 |\n|---|---|');
     probes.forEach((p, i) => { if (i >= kinds.length * 2) console.log(`| ${p.label} | ${f1(100 * rate(i))}% |`); });
   }
-  console.log(`\n無理に買う側の最高勝率 ${f1(100 * worst)}%（55% を超えるものがあれば，V の学習がまだ足りない）`);
+  if (kinds.length) console.log(`\n無理に買う側の最高勝率 ${f1(100 * worst)}%（55% を超えるものがあれば，V の学習がまだ足りない）`);
 }
 main();

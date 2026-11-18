@@ -1,13 +1,15 @@
 // 評価関数 V の学習データを作る（overlay_fit.py から並列に呼ばれる）
 //   GEN_GAMES=試合数 GEN_SEED=乱数の種 GEN_OUT=出力（Float32 の行：[あと何手番, 特徴量…]）
 //   GEN_MODE=old（既存のボットをくじで）／search（探索＋V．GEN_MODEL=重みのパス）
-//   GEN_BUDGET=葉の予算  GEN_RULES=ルール（JSON）
+//   GEN_BUDGET=葉の予算  GEN_RULES=ルール（JSON）  GEN_SET=調べたい市場（overlay-arena.ts の marketOf の書き方）
 // 各プレイヤーの手番の初めの持ち物と，そこから片付け終わるまでの手番数を記録する．
 // だれかが終わって試合が終わったら，残りの人は1人で最後まで続けて手番数を数える．
 // search では，席ごとに「この種類を買うと上乗せ」をくじで付けて，いろいろな買い方を経験させる（V が買われないタイルを知らないままにならないように）
 
+import './overlay-variant';
 import { writeFileSync } from 'node:fs';
-import { OKind, PERMS, isPerm, marketFromChoice } from '../src/overlay/tiles';
+import { OKind, PERMS, isPerm } from '../src/overlay/tiles';
+import { marketOf } from './overlay-arena';
 import { OPRESETS, chooseOverlayAction } from '../src/overlay/bot';
 import { OAction, OState, applyOverlay, newOverlayGame } from '../src/overlay/engine';
 import { chooseSearchAction } from '../src/overlay/search';
@@ -19,6 +21,7 @@ const GAMES = Number(process.env.GEN_GAMES ?? 100), SEED = Number(process.env.GE
 const MODE = process.env.GEN_MODE ?? 'old', OUT = process.env.GEN_OUT ?? 'gen.bin';
 const BUDGET = Number(process.env.GEN_BUDGET ?? 300);
 const RULES = process.env.GEN_RULES ? JSON.parse(process.env.GEN_RULES) : {};
+const GEN_SET = process.env.GEN_SET ?? '';
 const rand = rngFrom(SEED * 7 + 1);
 const pickOf = <T>(a: T[]) => a[Math.floor(rand() * a.length)];
 type Agent = (s: OState) => OAction;
@@ -68,8 +71,9 @@ function playOut(s: OState, agents: { act: Agent; ban: OKind[] }[], tracks: Trac
 
 for (let g = 0; g < GAMES; g++) {
   const n = [1, 2, 2, 3, 3, 4][g % 6];
-  const set = rand() < 0.6 ? 'all' : pickOf(['intro', 'light', 'swing', 'random', 'random']);
-  const market = marketFromChoice(set, rand);
+  // GEN_SET（調べたい市場）があれば7割はそれ．残りはいろいろなセット（V がセットの違いを知っているように）
+  const set = GEN_SET && rand() < 0.7 ? GEN_SET : rand() < 0.6 ? 'all' : pickOf(['intro', 'light', 'swing', 'random', 'random']);
+  const market = marketOf(set, rand);
   const s = newOverlayGame(Array.from({ length: n }, (_, i) => ({ name: `P${i}`, isBot: true })), (SEED * 1000003 + g * 7919 + 5) | 0, { rules: RULES, market });
   const agents = s.players.map(() => makeAgent(market));
   const tracks: Track[] = s.players.map(() => ({ feats: [], done: false }));
