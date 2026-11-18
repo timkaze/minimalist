@@ -9,7 +9,8 @@ import {
   chipNeed, dirsOf, discardLimit, envOf, favCost, hereFx, isDeep, isLastCard, newOverlayGame, normRules, ownedTiles, printedFx, removeLoad, samePos,
   stackAt, step, tileFx, topTile, yMax, yMin,
 } from './engine';
-import { OBOT_LABELS, OPRESETS, RANDOM_BOT, chooseOverlayAction, resolveBot } from './bot';
+import { OBOT_LABELS, RANDOM_BOT, SEARCH_BOT, botChoices, resolveBot } from './bot';
+import { botAction } from './bots';
 import { randomSeed } from '../engine/rng';
 
 const app = document.getElementById('app')!;
@@ -253,7 +254,7 @@ function lobby() {
   const room = net!.room;
   if (!room) { app.innerHTML = `<main class="setup"><p>部屋 ${esc(net!.code)} に接続しています…</p><button id="back">戻る</button></main>`; bindBack(); return; }
   const link = `${location.origin}${location.pathname}?room=${room.code}`;
-  const opts = [RANDOM_BOT, ...Object.keys(OPRESETS)].map(k => `<option value="${k}">${OBOT_LABELS[k]}</option>`).join('');
+  const opts = botChoices().map(k => `<option value="${k}">${OBOT_LABELS[k]}</option>`).join('');
   const prev = document.activeElement as HTMLInputElement | null;
   const caret = prev?.id === 'myname' ? prev.selectionStart : null;
   const named = !!store.get('name');
@@ -313,8 +314,8 @@ function setup() {
   clearTimeout(timer);
   me = 0;
   document.title = 'ミニマリスト オーバーレイ版';
-  const saved = (store.get('bots.v2') ?? `${RANDOM_BOT},${RANDOM_BOT}`).split(',');
-  const opts = (v: string) => [RANDOM_BOT, ...Object.keys(OPRESETS)].map(k => `<option value="${k}" ${k === v ? 'selected' : ''}>${OBOT_LABELS[k]}</option>`).join('');
+  const saved = (store.get('bots.v2') ?? `${SEARCH_BOT},${SEARCH_BOT}`).split(',');
+  const opts = (v: string) => botChoices().map(k => `<option value="${k}" ${k === v ? 'selected' : ''}>${OBOT_LABELS[k]}</option>`).join('');
   app.innerHTML = `
   <main class="setup">
     <h1 class="logo">ミニマリスト <span>オーバーレイ版</span></h1>
@@ -617,7 +618,7 @@ function bindControls() {
 
 function botStep() {
   if (!s || s.phase !== 'play' || !cur().isBot) return;
-  applyOverlay(s, s.current, chooseOverlayAction(s, OPRESETS[cur().botType ?? 'light'] ?? OPRESETS.light));
+  applyOverlay(s, s.current, botAction(s, cur().botType));
   render();
 }
 

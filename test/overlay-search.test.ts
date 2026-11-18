@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { marketFromChoice } from '../src/overlay/tiles';
 import { OState, applyOverlay, newOverlayGame } from '../src/overlay/engine';
 import { SearchOpts, chooseSearchAction } from '../src/overlay/search';
+import { SEARCH_BOT, botChoices, resolveBot } from '../src/overlay/bot';
+import { botAction } from '../src/overlay/bots';
 import { BINS, NFEAT, FEAT_VERSION, ValueJson, ValueModel, featOfPlayer } from '../src/overlay/value';
 
 /** でたらめな重みの V（合法手・再現性の確認用） */
@@ -50,6 +52,16 @@ describe('オーバーレイ版の探索ボット', () => {
     expect(s.players.every(p => p.perms.length === 0)).toBe(true);
     expect(s.log.some(l => /取得 .*断捨離/.test(l))).toBe(false);
   });
+
+  it('ボットの種類「つよいAI」は探索ボットへ回り，以前のAIと混ぜて最後まで対戦できる', () => {
+    expect(resolveBot(SEARCH_BOT)).toBe(SEARCH_BOT);
+    expect(botChoices()[0]).toBe(SEARCH_BOT);
+    const types = [SEARCH_BOT, 'aiFree', SEARCH_BOT];
+    const s = newOverlayGame(types.map((t, i) => ({ name: `P${i}`, isBot: true, botType: t })), 3);
+    let guard = 0;
+    while (s.phase === 'play' && guard++ < 50000) applyOverlay(s, s.current, botAction(s, s.players[s.current].botType, 100));
+    expect(s.phase).toBe('over');
+  }, 60000);
 
   it('学習済みの V（value.json）があれば読み込めて，対戦できる', () => {
     const path = new URL('../src/overlay/value.json', import.meta.url);

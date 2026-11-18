@@ -29,15 +29,20 @@ export const OPRESETS: Record<string, OGenome> = {
   aiSwing: { greed: 1.53, buy: [{ kind: 'DOWN2', cap: 3 }, { kind: 'DOWN', cap: 3 }, { kind: 'CLEAN', cap: 1 }] },
   aiRush: { greed: 1.27, buy: [{ kind: 'CALM', cap: 1 }, { kind: 'BR', cap: 1 }, { kind: 'DOWN', cap: 3 }] },
 };
+/** 探索＋評価関数のボット（bots.ts の botAction が search.ts へ回す．OPRESETS には入らない） */
+export const SEARCH_BOT = 'search';
 export const OBOT_LABELS: Record<string, string> = {
-  random: 'ランダム', light: '身軽型', rest: 'ひと休み型', fav: 'お気に入り型', swing: '往復型', mixed: 'バランス型', nobuy: '最小限型',
+  random: 'ランダム', search: 'つよいAI', light: '身軽型', rest: 'ひと休み型', fav: 'お気に入り型', swing: '往復型', mixed: 'バランス型', nobuy: '最小限型',
   aiFree: '万能AI', aiFav: 'お気に入りAI', aiLight: '身軽AI', aiClean: '大掃除AI', aiSwing: '往復AI', aiRush: '速攻AI',
 };
+
+/** 選べるボットの種類（並び順） */
+export const botChoices = (): string[] => [SEARCH_BOT, RANDOM_BOT, ...Object.keys(OPRESETS)];
 
 /** 「ランダム」：ゲーム開始時に，学習済みのAI（ai〜）の中からくじで決める（学習済みが無ければ最小限型以外から） */
 export const RANDOM_BOT = 'random';
 export function resolveBot(t: string | undefined, rand: () => number = Math.random): string {
-  if (t && t !== RANDOM_BOT && OPRESETS[t]) return t;
+  if (t === SEARCH_BOT || (t && t !== RANDOM_BOT && OPRESETS[t])) return t;
   const learned = Object.keys(OPRESETS).filter(k => k.startsWith('ai'));
   const pool = learned.length ? learned : Object.keys(OPRESETS).filter(k => k !== 'nobuy');
   return pool[Math.floor(rand() * pool.length)];

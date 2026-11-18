@@ -28,6 +28,8 @@ const b = client('B', 'tok-b-' + code);
 await sleep(600);
 a.ws.send(JSON.stringify({ t: 'addBot', botType: 'rest' }));
 await sleep(300);
+a.ws.send(JSON.stringify({ t: 'addBot', botType: 'search' })); // 探索ボット（つよいAI）も部屋で動くこと
+await sleep(300);
 b.ws.send(JSON.stringify({ t: 'start', set: 'intro' })); // ホストでないので拒否される
 await sleep(300);
 a.ws.send(JSON.stringify({ t: 'start', set: 'intro', rules: { hes: 'second' } }));
