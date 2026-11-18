@@ -1,0 +1,11 @@
+== fav_board_new: OV_TILES= RULES={"favBoard":true} SET=all+MOMENTUM,BACK,STACK,SHELF
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp2/training/overlay-runs/fit_exp_fav_board_new
+[1] データ 130363行（作成 136秒，終わらなかった人 7.0%）学習 2秒  検証 CE 2.121  手番数の誤差 4.64（平均で当てた場合 8.33）
+[2] データ 275022行（作成 161秒，終わらなかった人 33.7%）学習 3秒  検証 CE 1.768  手番数の誤差 6.06（平均で当てた場合 13.90）
+[3] データ 368841行（作成 99秒，終わらなかった人 0.7%）学習 3秒  検証 CE 1.756  手番数の誤差 5.01（平均で当てた場合 12.35）
+[4] データ 455263行（作成 91秒，終わらなかった人 0.2%）学習 4秒  検証 CE 1.722  手番数の誤差 4.35（平均で当てた場合 11.01）
+保存 /home/tomida/git/minimalist-exp2/training/overlay-runs/exp_fav_board_new/value_last.json（計 498秒）
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp2/training/overlay-runs/fit_exp_fav_board_new
+[refit] データ 455263行  検証 CE 1.715  手番数の誤差 4.31（平均で当てた場合 11.01）
+保存 /home/tomida/git/minimalist-exp2/training/overlay-runs/exp_fav_board_new/value.json
+== done fav_board_new

@@ -1,0 +1,11 @@
+== perm77: OV_TILES={"BIGDAY":{"cost":7},"ROOMBA":{"cost":7}} RULES={} SET=all
+特徴量 71，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_perm77
+[1] データ 125595行（作成 138秒，終わらなかった人 0.6%）学習 2秒  検証 CE 2.166  手番数の誤差 2.74（平均で当てた場合 6.04）
+[2] データ 240820行（作成 142秒，終わらなかった人 7.7%）学習 2秒  検証 CE 1.946  手番数の誤差 3.61（平均で当てた場合 8.80）
+[3] データ 334597行（作成 108秒，終わらなかった人 0.2%）学習 3秒  検証 CE 1.847  手番数の誤差 2.95（平均で当てた場合 7.41）
+[4] データ 295459行（作成 98秒，終わらなかった人 0.0%）学習 3秒  検証 CE 1.590  手番数の誤差 2.44（平均で当てた場合 6.80）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_perm77/value_last.json（計 495秒）
+特徴量 71，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_perm77
+[refit] データ 421054行  検証 CE 1.772  手番数の誤差 2.51（平均で当てた場合 6.49）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_perm77/value.json
+== done perm77
