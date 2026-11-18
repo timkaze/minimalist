@@ -4,12 +4,12 @@
 //   点数：mean = あと何手番かの平均（小さいほど良い）／win = 相手の残り手番の分布も見た勝つ確率
 // 仕様：Memories/01_BoardGames/ミニマリスト_オーバーレイ版_ボット強化_仕様.md
 
-import { Dir, MARKET, OKind, PERMS, TILES, UNLIMITED_KINDS, isPerm } from './tiles';
+import { BUYABLE, Dir, FURN_KINDS, OKind, PERMS, TILES, UNLIMITED_KINDS, isPerm } from './tiles';
 import {
-  Env, MAX_CHIPS, OAction, OPlayer, OState, Placed, Pos, Rules, Tile, canBuyAt, canDraw, canDropAt, canMove, chipNeed, dirsOf, effectAt, envOf,
-  isDeep, isLastCard, ownedTiles, step,
+  Env, Furn, MAX_CHIPS, OAction, OPlayer, OState, Placed, Pos, Rules, Tile, X_MAX, X_MIN, canBuyAt, canDraw, canDropAt, canMove, canPlaceFurn, chipNeed,
+  dirsOf, discardLimit, effectAt, envOf, exitPos, hasGlobal, isDeep, isLastCard, ownedTiles, samePos, yMax, yMin,
 } from './engine';
-import { BAG_KINDS, BINS, KIDX, MIDX, NFEAT, NK, NM, ValueModel, countsOf, featOfPlayer, fillFeat, kindWeights, permMaskOf, stockOf } from './value';
+import { BAG_KINDS, BINS, KIDX, MIDX, NFEAT, NK, NM, ValueModel, boardExt, countsOf, featOfPlayer, fillFeat, kindWeights, permMaskOf, stockOf } from './value';
 
 export interface SearchOpts {
   model: ValueModel;
@@ -23,23 +23,35 @@ export interface SearchOpts {
   ban?: OKind[];
   /** 学習データ用：取得をでたらめに選ぶ確率 */
   epsBuy?: number;
+  /** 学習データ用：盤に置くお気に入りの置き場所をでたらめに選ぶ確率（START から3歩以内） */
+  epsPlace?: number;
   rand?: () => number;
 }
 
 interface Node { pos: Pos; hes: number; placed: Placed[]; bag: number[]; bagN: number; disc: number[]; discN: number }
 /** 止まったときの選び方．flow・disc は種類ごとの枚数（置いたタイル／捨て山から排除），roomba は種類（-1 = 使わない） */
-interface Plan { u: number; buy: OKind[]; flow: number[] | null; roomba: number; disc: number[] | null }
+interface Plan { u: number; buy: OKind[]; flow: number[] | null; roomba: number; disc: number[] | null; place?: Furn[] }
+/** 盤の様子（お気に入りの置き場所と棚）の特徴量 */
+interface Ext { key: string; v: number[] }
+/**
+ * 止まったときの下ごしらえ：pc = 置いたタイルのうち選んで排除できる枚数，discP = 何もしなければ手番のあとに持ち物として残る枚数（袋以外），
+ * base = 選ばなくても排除される枚数（盤のルンバ），shelves = 手番のあとの棚の位置，tag = これらを区別する文字列
+ */
+interface Sit { pc: number[]; discP: number[]; ext: Ext; shelves: Pos[]; base: number; tag: string }
 
 const ZERO: number[] = new Array(NK).fill(0);
 const PERM_BIT = Object.fromEntries(PERMS.map((k, i) => [k, 1 << i])) as Record<OKind, number>;
 const sum = (a: ArrayLike<number>) => { let n = 0; for (let i = 0; i < a.length; i++) n += a[i]; return n; };
+const posKey = (p: Pos) => `${p.x},${p.y}`;
 
 /** 1手番のあいだ使い回すもの（持ち物・相手・市場は手番中に変わらない） */
 class Turn {
   readonly p: OPlayer; readonly env: Env; readonly rules: Rules;
   readonly chips: number; readonly permMask: number; readonly stock: number[]; readonly gacha: number[]; readonly gachaN: number;
   readonly weights: number[]; readonly owned: number[];
-  readonly hasRoomba: boolean; readonly hasBigday: boolean; readonly hasBag: boolean;
+  /** どこでも効くお気に入り（盤に置くルールでは，大掃除の日とルンバはここに入らない） */
+  readonly hasRoomba: boolean; readonly hasBigday: boolean;
+  readonly furn0: Furn[]; readonly shelves0: Pos[]; readonly ext0: Ext; readonly roombaPos: Pos | null;
   /** u[t] = この手番のあと t 手番で終わるときの点数（t = 0 はこの手番で終わる） */
   readonly u = new Float64Array(BINS + 1);
   private readonly x = new Float64Array(NFEAT);
@@ -48,6 +60,8 @@ class Turn {
   private readonly stopCache = new Map<string, number>();
   private readonly buyAll = new Map<string, OKind[][]>();
   private readonly buyShort = new Map<string, OKind[][]>();
+  private readonly extCache = new Map<string, Ext>();
+  private readonly places = new Map<OKind, Pos[]>();
   readonly round: number; readonly seat: number;
 
   constructor(readonly s: OState, readonly o: SearchOpts) {
@@ -61,8 +75,19 @@ class Turn {
     this.gacha = countsOf(s.gacha.map(kind => ({ kind }))); this.gachaN = s.gacha.length;
     this.weights = kindWeights(s.rules);
     this.owned = countsOf(ownedTiles(p));
-    this.hasRoomba = p.perms.includes('ROOMBA'); this.hasBigday = p.perms.includes('BIGDAY'); this.hasBag = p.perms.includes('BAG');
+    this.hasRoomba = hasGlobal(p.perms, 'ROOMBA', s.rules); this.hasBigday = hasGlobal(p.perms, 'BIGDAY', s.rules);
+    this.furn0 = s.rules.favBoard ? p.furn ?? [] : [];
+    this.shelves0 = (p.fixed ?? []).map(f => f.pos);
+    this.ext0 = this.ext(this.shelves0, this.furn0);
+    this.roombaPos = this.furn0.find(f => f.kind === 'ROOMBA')?.pos ?? null;
     this.setUtility();
+  }
+
+  private ext(shelves: Pos[], furn: Furn[]): Ext {
+    const key = furn.map(f => f.kind + posKey(f.pos)).join(';') + '|' + shelves.map(posKey).join(';');
+    let e = this.extCache.get(key);
+    if (!e) this.extCache.set(key, e = { key, v: boardExt(furn, shelves) });
+    return e;
   }
 
   private setUtility(): void {
@@ -91,7 +116,7 @@ class Turn {
   }
 
   /** 手番が終わったときの持ち物の点数．bag が空なら disc を袋とみなす */
-  leaf(bag: ArrayLike<number>, disc: ArrayLike<number>, permMask: number, chips: number, removed: number, stock: ArrayLike<number>, cache = true): number {
+  leaf(bag: ArrayLike<number>, disc: ArrayLike<number>, permMask: number, chips: number, removed: number, stock: ArrayLike<number>, ext: Ext, cache = true): number {
     const bn = sum(bag), dn = sum(disc);
     if (bn + dn < 1e-9) return this.u[0];
     if (bn < 1e-9) { bag = disc; disc = ZERO; }
@@ -99,11 +124,11 @@ class Turn {
     if (cache) {
       for (let i = 0; i < NK; i++) key += String.fromCharCode(48 + bag[i], 48 + disc[i]);
       for (let i = 0; i < NM; i++) key += String.fromCharCode(48 + Math.min(3, stock[i]));
-      key += String.fromCharCode(48 + permMask, 48 + chips, 48 + Math.min(removed, 15));
+      key += String.fromCharCode(48 + permMask, 48 + chips, 48 + Math.min(removed, 15)) + ext.key;
       const v = this.vCache.get(key);
       if (v !== undefined) return v;
     }
-    fillFeat(this.x, bag, disc, permMask, chips, removed, stock, this.gachaN, this.s.players.length, this.weights);
+    fillFeat(this.x, bag, disc, permMask, chips, removed, stock, this.gachaN, this.s.players.length, this.weights, ext.v);
     this.o.model.dist(this.x, this.d);
     let v = 0;
     for (let t = 1; t <= BINS; t++) v += this.d[t - 1] * this.u[t];
@@ -112,10 +137,34 @@ class Turn {
   }
 
   /** 排除の有無から決心チップの増減を決めて点数にする */
-  private finish(bag: ArrayLike<number>, disc: ArrayLike<number>, permMask: number, spent: number, nRemoved: number, stock: ArrayLike<number>, cache = true): number {
+  private finish(bag: ArrayLike<number>, disc: ArrayLike<number>, permMask: number, spent: number, nRemoved: number, stock: ArrayLike<number>, ext: Ext, cache = true): number {
     let chips = this.chips - spent;
     if (this.rules.chips && nRemoved === 0 && chips < MAX_CHIPS) chips++;
-    return this.leaf(bag, disc, permMask, chips, this.p.removed + nRemoved, stock, cache);
+    return this.leaf(bag, disc, permMask, chips, this.p.removed + nRemoved, stock, ext, cache);
+  }
+
+  /** 止まったときの下ごしらえ（盤に残る棚・盤のルンバが吸うタイルを先に引いておく） */
+  private sit(node: Node): Sit {
+    const pc = countsOf(node.placed);
+    const discP = node.disc.map((n, i) => n + pc[i]);
+    let shelves = this.shelves0, ext = this.ext0, base = 0, tag = '';
+    let added: Pos[] | null = null;
+    for (const t of node.placed) {
+      if (!TILES[t.kind].stay) continue;
+      const k = KIDX[t.kind];
+      pc[k]--; // 選んで排除はできない
+      const taken = added ? [...this.shelves0, ...added] : this.shelves0;
+      if ((t.pos.x !== 0 || t.pos.y !== 0) && !(this.p.furn ?? []).some(f => samePos(f.pos, t.pos)) && !taken.some(q => samePos(q, t.pos))) {
+        discP[k]--; (added ??= []).push(t.pos); // 盤に残って持ち物から外れる
+      }
+    }
+    if (added) { shelves = [...this.shelves0, ...added]; ext = this.ext(shelves, this.furn0); tag += 's' + added.map(posKey).join(';'); }
+    if (this.roombaPos) {
+      const rp = this.roombaPos;
+      const first = node.placed.find(c => samePos(c.pos, rp));
+      if (first && !TILES[first.kind].stay) { const k = KIDX[first.kind]; pc[k]--; discP[k]--; base = 1; tag += 'r' + k; }
+    }
+    return { pc, discP, ext, shelves, base, tag };
   }
 
   // ---- 取得 ----
@@ -126,7 +175,7 @@ class Turn {
     let out = this.buyAll.get(key);
     if (out) return out;
     out = [];
-    const ks = MARKET.filter(k => this.stock[MIDX[k]] > 0 && (TILES[k].cost ?? 99) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && (TILES[k].cost ?? 99) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
     const cur: OKind[] = [];
     const rec = (i: number, left: number) => {
       out!.push([...cur]);
@@ -159,16 +208,53 @@ class Turn {
     return v;
   }
 
+  /** 盤に置くお気に入り kind の置き場所の候補（V の点数の高い順．今の持ち物で比べる） */
+  private placesFor(kind: OKind): Pos[] {
+    let out = this.places.get(kind);
+    if (out) return out;
+    const p = this.p, b = this.s.board;
+    const cells: Pos[] = [];
+    for (let y = yMax(b); y >= yMin(b); y--) for (let x = X_MIN; x <= X_MAX; x++) if (canPlaceFurn({ x, y }, b, p.furn ?? [], p.fixed ?? [])) cells.push({ x, y });
+    cells.sort((a, z) => Math.abs(a.x) + Math.abs(a.y) - Math.abs(z.x) - Math.abs(z.y)); // 点数が同じなら START に近いマス
+    const o = this.o;
+    if (o.epsPlace && o.rand && o.rand() < o.epsPlace) {
+      const near = cells.filter(c => Math.abs(c.x) + Math.abs(c.y) <= 3);
+      const pick = near[Math.floor(o.rand() * near.length)];
+      out = [pick, ...cells.filter(c => c !== pick)];
+    } else {
+      let bag = countsOf(p.bag), disc = countsOf(p.placed, countsOf(p.discard));
+      if (!p.bag.length) { bag = disc; disc = ZERO; }
+      const mask = this.permMask | PERM_BIT[kind];
+      out = cells.map(c => ({ c, v: this.leaf(bag, disc, mask, this.chips, p.removed, this.stock, this.ext(this.shelves0, [...this.furn0, { kind, pos: c }])) }))
+        .sort((a, z) => z.v - a.v).map(z => z.c);
+    }
+    this.places.set(kind, out);
+    return out;
+  }
+  /** buy に含まれる盤に置くお気に入りの置き場所（同じマスにならないように上から取る） */
+  private placeOf(buy: OKind[]): Furn[] {
+    const out: Furn[] = [];
+    if (!this.rules.favBoard) return out;
+    for (const k of buy) {
+      if (!FURN_KINDS.includes(k)) continue;
+      const pos = this.placesFor(k).find(c => !out.some(f => samePos(f.pos, c)));
+      if (pos) out.push({ kind: k, pos });
+    }
+    return out;
+  }
+
   /** buy を買ったあとの点数（捨て山 disc に足す．お気に入りは permMask へ） */
-  private buyValue(buy: OKind[], bag: number[], disc: number[], nRemoved: number): number {
-    if (!buy.length) return this.finish(bag, disc, this.permMask, 0, nRemoved, this.stock);
-    const d = disc.slice(), st = this.stock.slice();
+  private buyValue(buy: OKind[], bag: number[], disc: number[], nRemoved: number, st: Sit): number {
+    if (!buy.length) return this.finish(bag, disc, this.permMask, 0, nRemoved, this.stock, st.ext);
+    const d = disc.slice(), stk = this.stock.slice();
     let mask = this.permMask;
     for (const k of buy) {
       if (isPerm(k)) mask |= PERM_BIT[k]; else d[KIDX[k]]++;
-      if (!UNLIMITED_KINDS.includes(k)) st[MIDX[k]]--;
+      if (!UNLIMITED_KINDS.includes(k)) stk[MIDX[k]]--;
     }
-    return this.finish(bag, d, mask, 0, nRemoved, st) + this.bonusOf(buy);
+    const place = this.placeOf(buy);
+    const ext = place.length ? this.ext(st.shelves, [...this.furn0, ...place]) : st.ext;
+    return this.finish(bag, d, mask, 0, nRemoved, stk, ext) + this.bonusOf(buy);
   }
 
   /** 探索の葉で試す組み合わせ：今の持ち物で点数の高い順に少数だけ（葉ごとに全部は試さない） */
@@ -182,7 +268,8 @@ class Turn {
       const p = this.p;
       let bag = countsOf(p.bag), disc = countsOf(p.placed, countsOf(p.discard));
       if (!p.bag.length) { bag = disc; disc = ZERO; }
-      out = all.map(b => ({ b, v: this.buyValue(b, bag, disc, 0) })).sort((a, b) => b.v - a.v).slice(0, 3).map(x => x.b);
+      const st: Sit = { pc: ZERO, discP: disc, ext: this.ext0, shelves: this.shelves0, base: 0, tag: '' };
+      out = all.map(b => ({ b, v: this.buyValue(b, bag, disc, 0, st) })).sort((a, b) => b.v - a.v).slice(0, 3).map(x => x.b);
       if (!out.some(b => !b.length)) out.push([]);
     }
     this.buyShort.set(key, out);
@@ -191,7 +278,7 @@ class Turn {
 
   // ---- 止まったとき ----
 
-  /** ルンバで1枚（置いたタイルから）を排除する選び方を足して，良いほうを返す */
+  /** どこでも効くルンバで1枚（置いたタイルから）を排除する選び方を足して，良いほうを返す */
   private withRoomba(base: Plan, pc: number[], used: number[] | null, f: (r: number) => number): Plan {
     if (!this.hasRoomba) return base;
     let best = base;
@@ -203,8 +290,8 @@ class Turn {
     return best;
   }
 
-  private removePlan(node: Node, pc: number[], bag: ArrayLike<number>, discP: number[], q: number, deep: boolean, discOk: number[], cache: boolean): Plan {
-    const x = node.pos.x, rules = this.rules;
+  private removePlan(node: Node, st: Sit, bag: ArrayLike<number>, discP: number[], q: number, deep: boolean, discOk: number[], cache: boolean): Plan {
+    const x = node.pos.x, rules = this.rules, pc = st.pc;
     const kinds: number[] = [];
     for (let k = 0; k < NK; k++) if (pc[k] > 0) kinds.push(k);
     // 置いたタイルの部分集合を全部（種類ごとの枚数）
@@ -216,7 +303,7 @@ class Turn {
         if (need > this.chips) return;
         const d = discP.slice();
         for (const k of kinds) d[k] -= flow[k];
-        const u = this.finish(bag, d, this.permMask, need, tiles.length, this.stock, cache);
+        const u = this.finish(bag, d, this.permMask, need, st.base + tiles.length, this.stock, st.ext, cache);
         if (tops.length < 2 || u > tops[tops.length - 1].u) {
           tops.push({ u, buy: [], flow: flow.slice(), roomba: -1, disc: null });
           tops.sort((a, b) => b.u - a.u);
@@ -231,22 +318,22 @@ class Turn {
     };
     rec(0);
     // 上位について，ルンバ・捨て山からの排除（良くなるあいだ1枚ずつ）を足す
-    const limit = (deep ? 1 : 0) + (this.hasBag ? q : 0);
+    const limit = discardLimit(this.p, q, deep);
     let best: Plan | null = null;
     for (const t of tops) {
       const fl = t.flow!, nFlow = sum(fl);
       const need = chipNeed(BAG_KINDS.flatMap((k, i) => Array.from({ length: fl[i] }, () => ({ id: 0, kind: k }))), [], x, q, rules, this.hasBigday);
       const d = discP.slice();
       for (let k = 0; k < NK; k++) d[k] -= fl[k];
-      let plan = this.withRoomba(t, pc, fl, r => { d[r]--; const u = this.finish(bag, d, this.permMask, need, nFlow + 1, this.stock, cache); d[r]++; return u; });
-      let n = nFlow + (plan.roomba >= 0 ? 1 : 0);
+      let plan = this.withRoomba(t, pc, fl, r => { d[r]--; const u = this.finish(bag, d, this.permMask, need, st.base + nFlow + 1, this.stock, st.ext, cache); d[r]++; return u; });
+      let n = st.base + nFlow + (plan.roomba >= 0 ? 1 : 0);
       if (plan.roomba >= 0) d[plan.roomba]--;
       const left = discOk.slice(), dz = new Array(NK).fill(0);
       for (let i = 0; i < limit; i++) {
         let bk = -1, bu = plan.u;
         for (let k = 0; k < NK; k++) {
           if (left[k] < 1 || !canDropAt(BAG_KINDS[k], x, rules)) continue;
-          d[k]--; const u = this.finish(bag, d, this.permMask, need, n + 1, this.stock, cache); d[k]++;
+          d[k]--; const u = this.finish(bag, d, this.permMask, need, n + 1, this.stock, st.ext, cache); d[k]++;
           if (u > bu) { bu = u; bk = k; }
         }
         if (bk < 0) break;
@@ -259,19 +346,18 @@ class Turn {
   }
 
   /** 今のマスで止まったときの一番良い選び方．exact：実際に止まったあと（取得は全部の組み合わせを試す．運試しは引いた結果を使う） */
-  plan(node: Node, exact: boolean): Plan {
+  plan(node: Node, exact: boolean, st: Sit = this.sit(node)): Plan {
     const { p, rules } = this;
     if (rules.lastCard && node.bagN === 0 && node.discN === 0 && node.placed.length === 1) {
       const fl = new Array(NK).fill(0); fl[KIDX[node.placed[0].kind]] = 1;
       return { u: this.u[0], buy: [], flow: fl, roomba: -1, disc: null };
     }
     const fx = exact && p.roll != null ? { kind: 'remove' as const, amount: p.roll } : effectAt(this.env, node.placed, node.pos);
-    const pc = countsOf(node.placed);
-    const discP = node.disc.map((n, i) => n + pc[i]);
+    const { pc, discP } = st;
     const x = node.pos.x;
     const idle = (): Plan => {
-      const base: Plan = { u: this.finish(node.bag, discP, this.permMask, 0, 0, this.stock), buy: [], flow: null, roomba: -1, disc: null };
-      return this.withRoomba(base, pc, null, r => { discP[r]--; const u = this.finish(node.bag, discP, this.permMask, 0, 1, this.stock); discP[r]++; return u; });
+      const base: Plan = { u: this.finish(node.bag, discP, this.permMask, 0, st.base, this.stock, st.ext), buy: [], flow: null, roomba: -1, disc: null };
+      return this.withRoomba(base, pc, null, r => { discP[r]--; const u = this.finish(node.bag, discP, this.permMask, 0, st.base + 1, this.stock, st.ext); discP[r]++; return u; });
     };
     switch (fx.kind) {
       case 'buy': {
@@ -279,20 +365,21 @@ class Turn {
         const opts = exact ? this.buyOptions(fx.amount, lvl) : this.shortBuy(fx.amount, lvl);
         if (exact && this.o.epsBuy && this.o.rand && this.o.rand() < this.o.epsBuy) {
           const b = opts[Math.floor(this.o.rand() * opts.length)];
-          return { u: this.buyValue(b, node.bag, discP, 0), buy: b, flow: null, roomba: -1, disc: null };
+          return { u: this.buyValue(b, node.bag, discP, st.base, st), buy: b, flow: null, roomba: -1, disc: null, place: this.placeOf(b) };
         }
         let best: Plan | null = null;
         for (const b of opts) {
-          const base: Plan = { u: this.buyValue(b, node.bag, discP, 0), buy: b, flow: null, roomba: -1, disc: null };
-          const pl = this.withRoomba(base, pc, null, r => { discP[r]--; const u = this.buyValue(b, node.bag, discP, 1); discP[r]++; return u; });
+          const base: Plan = { u: this.buyValue(b, node.bag, discP, st.base, st), buy: b, flow: null, roomba: -1, disc: null };
+          const pl = this.withRoomba(base, pc, null, r => { discP[r]--; const u = this.buyValue(b, node.bag, discP, st.base + 1, st); discP[r]++; return u; });
           if (!best || pl.u > best.u) best = pl;
         }
+        if (exact) best!.place = this.placeOf(best!.buy);
         return best!;
       }
       case 'remove': {
         const rolled = exact && p.roll != null;
         const ok = rolled ? countsOf(p.discard.filter(t => !p.rollIds?.includes(t.id))) : node.disc;
-        return this.removePlan(node, pc, node.bag, discP, fx.amount, isDeep(node.pos.y, this.s.board), ok, true);
+        return this.removePlan(node, st, node.bag, discP, fx.amount, isDeep(node.pos.y, this.s.board), ok, true);
       }
       case 'gacha': {
         if (!this.gachaN) return idle();
@@ -300,12 +387,12 @@ class Turn {
           let v = 0;
           for (let k = 0; k < NK; k++) {
             if (!this.gacha[k]) continue;
-            d0[k]++; v += this.gacha[k] * this.finish(node.bag, d0, this.permMask, 0, nRem, this.stock); d0[k]--;
+            d0[k]++; v += this.gacha[k] * this.finish(node.bag, d0, this.permMask, 0, nRem, this.stock, st.ext); d0[k]--;
           }
           return v / this.gachaN;
         };
-        const base: Plan = { u: val(0, discP), buy: [], flow: null, roomba: -1, disc: null };
-        return this.withRoomba(base, pc, null, r => { discP[r]--; const u = val(1, discP); discP[r]++; return u; });
+        const base: Plan = { u: val(st.base, discP), buy: [], flow: null, roomba: -1, disc: null };
+        return this.withRoomba(base, pc, null, r => { discP[r]--; const u = val(st.base + 1, discP); discP[r]++; return u; });
       }
       case 'lucky': {
         // 当たりの位置は 0〜袋の残り枚数が同じ確率．表にしたタイルは捨て山へ（排除できない）．中身は袋の構成比で均す
@@ -314,7 +401,7 @@ class Turn {
         for (let k = 0; k <= n; k++) {
           const r = n ? k / n : 0;
           const bag = node.bag.map(c => c * (1 - r)), d = discP.map((c, i) => c + node.bag[i] * r);
-          v += this.removePlan(node, pc, bag, d, k, false, node.disc, k === 0 || k === n).u;
+          v += this.removePlan(node, st, bag, d, k, false, node.disc, k === 0 || k === n).u;
         }
         return { u: v / (n + 1), buy: [], flow: null, roomba: -1, disc: null };
       }
@@ -326,17 +413,18 @@ class Turn {
   rankBuys(node: Node): { buy: OKind[]; u: number }[] {
     const fx = effectAt(this.env, node.placed, node.pos);
     if (fx.kind !== 'buy') return [];
-    const pc = countsOf(node.placed), discP = node.disc.map((n, i) => n + pc[i]);
-    return this.buyOptions(fx.amount, Math.min(2, Math.max(0, node.pos.x))).map(b => ({ buy: b, u: this.buyValue(b, node.bag, discP, 0) })).sort((a, b) => b.u - a.u);
+    const st = this.sit(node);
+    return this.buyOptions(fx.amount, Math.min(2, Math.max(0, node.pos.x))).map(b => ({ buy: b, u: this.buyValue(b, node.bag, st.discP, st.base, st) })).sort((a, b) => b.u - a.u);
   }
 
   stopValue(node: Node): number {
     const fx = effectAt(this.env, node.placed, node.pos);
     const pc = countsOf(node.placed);
-    let key = `${fx.kind[0]}${fx.amount}:${node.pos.x < -2 ? -2 : node.pos.x > 2 ? 2 : node.pos.x}:${isDeep(node.pos.y, this.s.board) ? 1 : 0}:${node.discN}:`;
+    const st = this.sit(node);
+    let key = `${fx.kind[0]}${fx.amount}:${node.pos.x < -2 ? -2 : node.pos.x > 2 ? 2 : node.pos.x}:${isDeep(node.pos.y, this.s.board) ? 1 : 0}:${node.discN}:${st.tag}:`;
     for (let i = 0; i < NK; i++) key += String.fromCharCode(48 + pc[i], 48 + node.bag[i]);
     let v = this.stopCache.get(key);
-    if (v === undefined) { v = this.plan(node, false).u; this.stopCache.set(key, v); }
+    if (v === undefined) { v = this.plan(node, false, st).u; this.stopCache.set(key, v); }
     return v;
   }
 
@@ -365,8 +453,8 @@ class Turn {
   after(node: Node, src: { bag: number[]; bagN: number; disc: number[]; discN: number }, k: number, dir: Dir | null, budget: number): number {
     const kind = BAG_KINDS[k];
     const bag = src.bag.slice(); bag[k]--;
-    const pos = dir && canMove(this.env, node.pos, dir) ? step(node.pos, dir) : node.pos;
-    const child: Node = { pos, hes: node.hes + (kind === 'HES' ? 1 : 0), placed: [...node.placed, { id: 0, kind, pos: node.pos }], bag, bagN: src.bagN - 1, disc: src.disc, discN: src.discN };
+    const placed = [...node.placed, { id: 0, kind, pos: node.pos }];
+    const child: Node = { pos: exitPos(this.env, placed, node.pos, kind, dir), hes: node.hes + (kind === 'HES' ? 1 : 0), placed, bag, bagN: src.bagN - 1, disc: src.disc, discN: src.discN };
     return this.forced(kind, node.hes) ? this.stopValue(child) : this.value(child, budget);
   }
 
@@ -437,9 +525,11 @@ export function chooseSearchAction(s: OState, o: SearchOpts): OAction {
       if (s.rules.lastCard && isLastCard(p)) return { type: 'resolve', buy: [], remove: [p.placed[0].id] };
       const pl = t.plan(t.root(), true);
       const used = new Set<number>(p.rollIds ?? []);
+      // 盤のルンバが吸うタイル（そのマスに最初に置いたもの）は，選んで排除する対象から外しておく
+      if (t.roombaPos) { const rp = t.roombaPos; const first = p.placed.find(c => samePos(c.pos, rp)); if (first && !TILES[first.kind].stay) used.add(first.id); }
       const remove = [...pick(p.placed, pl.flow, used), ...pick(p.discard, pl.disc, used)];
       const roomba = pl.roomba >= 0 ? p.placed.find(c => KIDX[c.kind] === pl.roomba && !used.has(c.id))?.id : undefined;
-      return { type: 'resolve', buy: pl.buy, remove, roomba };
+      return { type: 'resolve', buy: pl.buy, remove, roomba, ...(pl.place?.length ? { place: pl.place } : {}) };
     }
     case 'branch': {
       const node = t.root();

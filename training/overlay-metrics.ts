@@ -5,7 +5,7 @@
 // ボットの名前は overlay-arena.ts を参照（search?… で探索ボット）
 
 import { writeFileSync } from 'node:fs';
-import { MARKET, OKind, PERMS, TILES, isPerm } from '../src/overlay/tiles';
+import { BUYABLE, EXPERIMENTAL, OKind, PERMS, TILES, isPerm } from '../src/overlay/tiles';
 import { GRec, Job, PRec, f1, f2, mean, pct, quantile, runJobs, sePct, tileName, winShare } from './overlay-arena';
 
 const GAMES = Number(process.argv[2] ?? 2000);
@@ -21,6 +21,7 @@ const FAMILY: Record<string, OKind[]> = {
   '量のタイル': ['CALM', 'DOWN2', 'REST', 'CLEAN', 'MEMO'],
   '身軽・道連れ': ['LIGHT', 'DRAG'],
   '額・移動': ['BR', 'BREATH', 'SWING', 'FREE', 'TREAT', 'UP2', 'RUSH'],
+  '試作のタイル': EXPERIMENTAL,
 };
 const spendOf = (p: PRec, ks: OKind[]) => ks.reduce((n, k) => n + (p.bought[k] ?? 0) * (TILES[k].cost ?? 0), 0);
 /** 系統：片付けたい以外で，いちばんコストをかけた系統（合計3以下は最小限） */
@@ -31,7 +32,7 @@ export function familyOf(p: PRec): string {
 /** 型：お気に入りを持っていればその組み合わせ，なければ一番コストをかけたタイル */
 export function typeOf(p: PRec): string {
   if (p.perms.length) return '★' + PERMS.filter(k => p.perms.includes(k)).map(tileName).join('＋');
-  const ks = MARKET.filter(k => !isPerm(k) && k !== 'DOWN' && (p.bought[k] ?? 0) > 0).sort((a, b) => spendOf(p, [b]) - spendOf(p, [a]));
+  const ks = BUYABLE.filter(k => !isPerm(k) && k !== 'DOWN' && (p.bought[k] ?? 0) > 0).sort((a, b) => spendOf(p, [b]) - spendOf(p, [a]));
   return ks.length && spendOf(p, ks) > 3 ? tileName(ks[0]) : '最小限';
 }
 
@@ -126,7 +127,7 @@ async function main() {
   say('\n### タイルごと（そのタイルが市場にある試合）');
   say('| タイル | コスト | 買った人 | 勝者で買った人 | 平均枚数 | 買った人の勝率倍率 | 初取得ラウンド |\n|---|---|---|---|---|---|---|');
   const dead: string[] = [];
-  for (const k of MARKET) {
+  for (const k of BUYABLE) {
     let app = 0, own = 0, cnt = 0, win = 0, wown = 0, wtot = 0, pr = 0, prn = 0;
     for (const g of pool) {
       if (!g.market.includes(k)) continue;

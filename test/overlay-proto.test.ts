@@ -1,0 +1,156 @@
+import { describe, expect, it } from 'vitest';
+import { BUYABLE, OKind, marketFromChoice } from '../src/overlay/tiles';
+import { OState, Rules, UNLIMITED, applyOverlay, hereFx, newOverlayGame, ownedTiles } from '../src/overlay/engine';
+import { OPRESETS, playOverlayTurn } from '../src/overlay/bot';
+import { chooseSearchAction } from '../src/overlay/search';
+import { BINS, FEAT_VERSION, NFEAT, ValueJson, ValueModel, featNames } from '../src/overlay/value';
+
+const game = (rules: Partial<Rules> = {}, market?: OKind[]) => newOverlayGame([{ name: 'A' }, { name: 'B' }], 1, { rules, market });
+/** 現在の手番の人の袋を，引く順に指定する */
+function stack(s: OState, ...kinds: OKind[]) {
+  const p = s.players[s.current];
+  p.bag = kinds.map(k => ({ id: s.nextId++, kind: k })).reverse();
+}
+const draw = (s: OState) => applyOverlay(s, s.current, { type: 'draw' });
+const stop = (s: OState) => applyOverlay(s, s.current, { type: 'stop' });
+const here = (s: OState) => hereFx(s, s.players[s.current]);
+/** 相手の手番を何もせずに終える */
+function pass(s: OState) {
+  stack(s, 'DOWN'); draw(s); stop(s);
+  applyOverlay(s, s.current, { type: 'resolve', buy: [], remove: [] });
+}
+
+describe('オーバーレイ版の試作タイル', () => {
+  it('勢い：盤にあるあいだ，止まったマスの量 +1（重なる）', () => {
+    const s = game();
+    stack(s, 'MOMENTUM', 'MOMENTUM'); // (0,-1) 量1，(0,-2) は額2 の特別なマス
+    draw(s);
+    expect(here(s)).toEqual({ kind: 'remove', amount: 2 });
+    draw(s);
+    expect(here(s)).toEqual({ kind: 'buy', amount: 2 }); // 額には足さない
+  });
+
+  it('ひきかえす：1つ前に置いたタイルのマスへ戻り，そのタイルの効果を使える', () => {
+    const s = game();
+    stack(s, 'DOWN2', 'BACK'); // 断捨離（↓・量2）を START に置いて下へ → ひきかえすで START の断捨離の上へ
+    draw(s); draw(s);
+    expect(s.players[0].pos).toEqual({ x: 0, y: 0 });
+    expect(here(s)).toEqual({ kind: 'remove', amount: 2 });
+    const t = game();
+    stack(t, 'BACK'); // 1枚目なら動かない（自分の額2）
+    draw(t);
+    expect(t.players[0].pos).toEqual({ x: 0, y: 0 });
+    expect(here(t)).toEqual({ kind: 'buy', amount: 2 });
+  });
+
+  it('山積み：量＝そのマスにこの手番に重ねた枚数', () => {
+    const s = game();
+    stack(s, 'REST', 'TREAT', 'STACK'); // 動かないタイルを3枚 START に重ねる
+    draw(s); draw(s); draw(s);
+    expect(here(s)).toEqual({ kind: 'remove', amount: 3 });
+  });
+
+  it('収納棚：置いたマスに残って持ち物から外れ，そのマスがずっと量2になる．START では残らない', () => {
+    const s = game();
+    const p = s.players[0];
+    stack(s, 'DOWN', 'SHELF');
+    p.discard = [{ id: s.nextId++, kind: 'JUNK' }];
+    const before = ownedTiles(p).length + 0;
+    draw(s); draw(s); // (0,-1) に棚
+    expect(here(s)).toEqual({ kind: 'remove', amount: 2 });
+    stop(s);
+    const shelf = p.placed[1].id;
+    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [shelf] })).toThrow(); // 排除はできない
+    applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [p.placed[0].id] });
+    expect(p.fixed!.map(f => f.pos)).toEqual([{ x: 0, y: -1 }]);
+    expect(ownedTiles(p).some(t => t.kind === 'SHELF')).toBe(false);
+    expect(p.removed).toBe(1); // 棚は排除した枚数に数えない
+    expect(before).toBeGreaterThan(0);
+    pass(s);
+    stack(s, 'DOWN'); draw(s); // 次の手番：(0,-1) は印刷では量1だが，棚があるので量2
+    expect(here(s)).toEqual({ kind: 'remove', amount: 2 });
+    const t = game();
+    stack(t, 'SHELF'); draw(t); stop(t);
+    applyOverlay(t, 0, { type: 'resolve', buy: [], remove: [] });
+    expect(t.players[0].fixed ?? []).toEqual([]);
+    expect(t.players[0].discard.some(c => c.kind === 'SHELF')).toBe(true);
+  });
+});
+
+describe('盤に置くお気に入り（favBoard）', () => {
+  it('大掃除の日：置いたマスで止まると何枚でも排除できる．ほかのマスでは効かない', () => {
+    const s = game({ favBoard: true });
+    const p = s.players[0];
+    p.perms.push('BIGDAY'); p.furn = [{ kind: 'BIGDAY', pos: { x: -1, y: 0 } }];
+    p.discard = [{ id: s.nextId++, kind: 'JUNK' }];
+    stack(s, 'DOUBT'); // ← で (-1,0) へ
+    draw(s);
+    expect(here(s)).toEqual({ kind: 'remove', amount: UNLIMITED });
+    stop(s);
+    applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [p.placed[0].id] });
+    expect(p.removed).toBe(1);
+    pass(s);
+    stack(s, 'WANT', 'WANT', 'DOWN', 'DOWN', 'DOWN'); // 上へ2つ，下へ3つ → (0,-1) 量1：重さ2の「欲しい」2枚は捨てられない
+    for (let i = 0; i < 5; i++) draw(s);
+    expect(here(s)).toEqual({ kind: 'remove', amount: 1 });
+    stop(s);
+    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: [], remove: p.placed.filter(c => c.kind === 'WANT').map(c => c.id) })).toThrow();
+  });
+
+  it('取得したら盤に置く（場所は選べる．START や置いてあるマスは不可）', () => {
+    const s = game({ favBoard: true });
+    const p = s.players[0];
+    stack(s, 'RUSH', 'RUSH', 'UP2', 'UP2'); // (2,2)：額 3+2 = 5，衝動2
+    for (let i = 0; i < 4; i++) draw(s);
+    expect(here(s)).toEqual({ kind: 'buy', amount: 5 });
+    stop(s);
+    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: ['BIGDAY'], remove: [], place: [{ kind: 'BIGDAY', pos: { x: 0, y: 0 } }] })).toThrow();
+    applyOverlay(s, 0, { type: 'resolve', buy: ['BIGDAY'], remove: [], place: [{ kind: 'BIGDAY', pos: { x: 0, y: -1 } }] });
+    expect(p.furn).toEqual([{ kind: 'BIGDAY', pos: { x: 0, y: -1 } }]);
+    expect(p.perms).toContain('BIGDAY');
+  });
+
+  it('ルンバ：そのマスに最初に置いたタイルを吸い込む（1手番に1枚）', () => {
+    const s = game({ favBoard: true });
+    const p = s.players[0];
+    p.perms.push('ROOMBA'); p.furn = [{ kind: 'ROOMBA', pos: { x: 1, y: 0 } }];
+    p.discard = [];
+    stack(s, 'RUSH', 'JUNK', 'RUSH'); // START→(1,0)→(2,0)→(3,0)：ルンバのマスにはガラクタを置く
+    draw(s); draw(s); draw(s);
+    stop(s);
+    applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [] });
+    expect(p.removed).toBe(1);
+    expect(ownedTiles(p).some(t => t.kind === 'JUNK')).toBe(false);
+    expect(ownedTiles(p).filter(t => t.kind === 'RUSH').length).toBe(2);
+    expect(p.chips).toBe(0); // 排除できた手番なので決心チップはもらえない
+  });
+
+  it('既存のボットと探索ボットが，試作タイル＋盤に置くお気に入りの卓を最後まで遊べる', () => {
+    let a = 11;
+    const r = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296 - 0.5; };
+    const layer = (i: number, o: number) => ({ in: i, out: o, w: Array.from({ length: i * o }, () => r() * 0.4), b: Array.from({ length: o }, r) });
+    const json: ValueJson = { version: FEAT_VERSION, feat: NFEAT, bins: BINS, names: featNames(), layers: [layer(NFEAT, 12), layer(12, BINS)] };
+    const model = new ValueModel(json);
+    const market = marketFromChoice([...BUYABLE]);
+    for (let seed = 1; seed <= 2; seed++) {
+      const s = newOverlayGame([{ name: 'A' }, { name: 'B' }, { name: 'C' }], seed, { rules: { favBoard: true }, market });
+      const gs = [OPRESETS.aiFree, OPRESETS.fav, OPRESETS.aiLight];
+      while (s.phase === 'play') playOverlayTurn(s, gs);
+      expect(s.phase).toBe('over');
+      const t = newOverlayGame([{ name: 'A' }, { name: 'B' }], seed, { rules: { favBoard: true }, market });
+      let guard = 0;
+      let rnd = seed;
+      const rand = () => { rnd = (rnd * 1103515245 + 12345) >>> 0; return rnd / 4294967296; };
+      while (t.phase === 'play' && guard++ < 50000) applyOverlay(t, t.current, chooseSearchAction(t, optsFor(model, rand)));
+      expect(t.phase).toBe('over');
+    }
+  }, 120000);
+});
+
+const optsCache = new Map<ValueModel, ReturnType<typeof mk>>();
+const mk = (model: ValueModel, rand: () => number) => ({ model, objective: 'win' as const, budget: 60, epsPlace: 0.5, epsBuy: 0.2, rand });
+function optsFor(model: ValueModel, rand: () => number) {
+  let o = optsCache.get(model);
+  if (!o) optsCache.set(model, o = mk(model, rand));
+  return o;
+}

@@ -6,7 +6,7 @@ import './overlay-variant';
 import { spawn } from 'node:child_process';
 import { cpus } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { MARKET, OKind, PERMS, TILES, isPerm, marketFromChoice } from '../src/overlay/tiles';
+import { BUYABLE, OKind, PERMS, TILES, isPerm, marketFromChoice } from '../src/overlay/tiles';
 import { OPRESETS, chooseOverlayAction } from '../src/overlay/bot';
 import { OAction, OState, Rules, applyOverlay, hereFx, newOverlayGame, ownedTiles, topTile } from '../src/overlay/engine';
 import { searchAgentFromSpec } from './overlay-search-node';
@@ -36,11 +36,16 @@ export interface GRec {
 
 export interface PlayOpts { set?: string; rules?: Partial<Rules>; stock?: 'normal' | 'plenty'; rand?: () => number; onTurnStart?: (s: OState, seat: number) => void }
 
-/** セットの書き方：セットの id（all・intro…）／all-BIGDAY,ROOMBA（すべてから除く．perms でお気に入り全部）／DOWN,BR,…（種類を並べる） */
+/** セットの書き方：セットの id（all・intro…）／all-BIGDAY,ROOMBA（除く．perms でお気に入り全部）／all+BACK,STACK（試作を足す）／all+BACK-BIGDAY／DOWN,BR,…（種類を並べる） */
 export function marketOf(set: string, rand?: () => number): OKind[] {
-  if (set.startsWith('all-')) {
-    const drop = set.slice(4).split(',').flatMap(k => (k === 'perms' ? PERMS : [k as OKind]));
-    return MARKET.filter(k => !drop.includes(k));
+  const m = set.match(/^([a-z]+)((?:[+-][A-Za-z0-9,]+)+)$/);
+  if (m) {
+    let ks = marketFromChoice(m[1], rand);
+    for (const seg of m[2].match(/[+-][A-Za-z0-9,]+/g)!) {
+      const list = seg.slice(1).split(',').flatMap(k => (k === 'perms' ? PERMS : [k as OKind]));
+      ks = seg[0] === '-' ? ks.filter(k => !list.includes(k)) : [...ks, ...list.filter(k => !ks.includes(k))];
+    }
+    return BUYABLE.filter(k => ks.includes(k));
   }
   return marketFromChoice(set.includes(',') ? (set.split(',') as OKind[]) : set, rand);
 }

@@ -43,11 +43,11 @@ function makeAgent(market: OKind[]): { act: Agent; ban: OKind[] } {
     ban = r < 0.4 ? [...PERMS] : r < 0.7 ? pickOf(FAMILIES) : market.filter(k => k !== 'DOWN' && rand() < 0.3);
     for (const k of ban) delete bonus[k];
   }
-  const o = { model, objective: 'mean' as const, budget: BUDGET, bonus, ban, epsBuy: 0.03, rand };
+  const o = { model, objective: 'mean' as const, budget: BUDGET, bonus, ban, epsBuy: 0.03, epsPlace: 0.5, rand };
   return { act: s => chooseSearchAction(s, o), ban };
 }
 
-const CAP = 45;
+const CAP = 30;
 const rows: number[][] = [];
 let stuck = 0, tracksN = 0;
 /** 1人ぶんの記録：手番の初めの特徴量 */

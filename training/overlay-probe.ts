@@ -5,8 +5,8 @@
 //   ・買わない：その種類を買わない．勝率が 50% から大きく下がるほど，そのタイルは勝つのに欠かせない
 // 「無理に買う」がどれも 55% を超えないことを，バランスの結論を出す前の条件にする（改善方針の段階2）
 
-import { MARKET, OKind, PERMS } from '../src/overlay/tiles';
-import { Job, f1, runJobs, sePct, tileName, winShare } from './overlay-arena';
+import { BUYABLE, OKind, PERMS } from '../src/overlay/tiles';
+import { Job, f1, marketOf, runJobs, sePct, tileName, winShare } from './overlay-arena';
 import { DEFAULT_MODEL } from './overlay-search-node';
 
 const GAMES = Number(process.argv[2] ?? 400);
@@ -14,7 +14,8 @@ const MODEL = process.env.MODEL ?? DEFAULT_MODEL, OBJ = process.env.OBJ ?? 'mean
 const ONLY = (process.env.ONLY ?? '').split(',').filter(Boolean);
 const base = `search?m=${MODEL}&obj=${OBJ}`;
 // PROBE_GROUPS=1：まとめて買わない条件だけ回す（短い）
-const kinds = process.env.PROBE_GROUPS ? [] : MARKET.filter(k => k !== 'DOWN' && (!ONLY.length || ONLY.includes(k)));
+const IN_SET = marketOf(process.env.SET ?? 'all');
+const kinds = process.env.PROBE_GROUPS ? [] : BUYABLE.filter(k => IN_SET.includes(k) && k !== 'DOWN' && (!ONLY.length || ONLY.includes(k)));
 const GROUPS: Record<string, OKind[]> = ONLY.length ? {} : {
   'お気に入り全部': PERMS, 'ルンバ・大掃除の日': ['ROOMBA', 'BIGDAY'], '量のタイル全部': ['CALM', 'DOWN2', 'REST', 'CLEAN', 'MEMO'],
   '身軽・道連れ': ['LIGHT', 'DRAG'], '向きを選べるタイル': ['BR', 'BREATH', 'SWING', 'FREE'], '額のタイル': ['TREAT', 'UP2', 'RUSH'],

@@ -19,7 +19,33 @@ import torch.nn as nn
 ROOT = Path(__file__).resolve().parent.parent
 TSX = str(ROOT / 'node_modules/.bin/tsx')
 BINS = 40
-FEAT_VERSION = 1
+FEAT_VERSION = 2
+
+# 名前の無い古い重み（版1，特徴量 71 個）の並び
+_K1 = 'WANT DOUBT JUNK HES DOWN BR BREATH SWING UP2 RUSH CALM DOWN2 LIGHT DRAG MEMO FREE REST TREAT CLEAN'.split()
+_P1 = 'ROOMBA BIGDAY BAG COMPASS KODAWARI'.split()
+_M1 = 'DOWN BR BREATH SWING UP2 RUSH CALM DOWN2 LIGHT DRAG MEMO FREE REST TREAT CLEAN'.split() + _P1
+V1_NAMES = [f'bag:{k}' for k in _K1] + [f'disc:{k}' for k in _K1] + [f'perm:{k}' for k in _P1] + ['chips', 'removed', 'light', 'own', 'weight', 'bagn'] + [f'stock:{k}' for k in _M1] + ['gacha', 'players']
+
+
+def adapt(init: Path, names, out: Path) -> Path:
+    """特徴量の並びが違う重みを，名前で対応づけて今の並びに直す（新しい特徴量の重みは 0）．自己対戦の最初の方策として使う"""
+    j = json.loads(init.read_text())
+    old = j.get('names') or V1_NAMES
+    if old == names:
+        return init
+    l0 = j['layers'][0]
+    w = np.array(l0['w']).reshape(l0['out'], l0['in'])
+    idx = {n: i for i, n in enumerate(old)}
+    nw = np.zeros((l0['out'], len(names)))
+    for i, n in enumerate(names):
+        if n in idx:
+            nw[:, i] = w[:, idx[n]]
+    l0['in'] = len(names)
+    l0['w'] = [round(float(v), 6) for v in nw.reshape(-1)]
+    j.update(feat=len(names), names=names, version=FEAT_VERSION)
+    out.write_text(json.dumps(j))
+    return out
 
 
 def node_env():
@@ -125,18 +151,24 @@ def main():
     ap.add_argument('--init', default='', help='最初の重み（省略すると既存のボットの対戦から当てはめる）')
     ap.add_argument('--out', default='src/overlay/value.json')
     ap.add_argument('--seed', type=int, default=1)
+    ap.add_argument('--adapt', default='', help='この重みを今の特徴量の並びに直して --out に書くだけ')
     ap.add_argument('--refit', nargs='*', default=None, help='自己対戦をせず，指定したデータのフォルダ（data_*）だけで当てはめ直す')
     a = ap.parse_args()
 
     run = ROOT / 'training/overlay-runs' / f'fit_{a.tag}'
     run.mkdir(parents=True, exist_ok=True)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    nfeat = int(subprocess.run([TSX, '-e', "import('./src/overlay/value.ts').then(m => console.log(m.NFEAT))"], cwd=ROOT, env=ENV, capture_output=True, text=True).stdout.strip())
+    names = json.loads(subprocess.run([TSX, '-e', "import('./src/overlay/value.ts').then(m => console.log(JSON.stringify(m.featNames())))"], cwd=ROOT, env=ENV, capture_output=True, text=True).stdout.strip())
+    nfeat = len(names)
     print(f'特徴量 {nfeat}，装置 {device}，出力 {run}', flush=True)
 
     def save(layers, path: Path, note: str):
-        path.write_text(json.dumps({'version': FEAT_VERSION, 'feat': nfeat, 'bins': BINS, 'rules': json.loads(a.rules), 'note': note, 'layers': layers}))
+        path.write_text(json.dumps({'version': FEAT_VERSION, 'feat': nfeat, 'bins': BINS, 'names': names, 'rules': json.loads(a.rules), 'note': note, 'layers': layers}))
 
+    if a.adapt:
+        (ROOT / a.out).write_text(adapt(Path(a.adapt), names, run / 'value_adapt.json').read_text())
+        print(f'保存 {ROOT / a.out}')
+        return
     if a.refit is not None:
         # 反復ごとの当てはめは，直近のデータに無い局面（終わらない持ち物など）を忘れて強さがぶれる．最後に広い範囲のデータでまとめて当てはめる
         x, t = load(a.refit, nfeat)
@@ -149,7 +181,7 @@ def main():
         (ROOT / a.out).write_text(model.read_text())
         print(f'保存 {ROOT / a.out}')
         return
-    model = Path(a.init) if a.init else None
+    model = adapt(Path(a.init), names, run / 'value_init.json') if a.init else None
     dirs = []
     t0 = time.time()
     for it in range(0 if not model else 1, a.iters + 1):

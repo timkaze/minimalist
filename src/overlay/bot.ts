@@ -4,7 +4,7 @@
 import { Dir, OKind, TILES, isPerm, weightOf } from './tiles';
 import {
   Env, OAction, OPlayer, OState, Tile, Walk, applyOverlay, canBuyAt, canDraw, canDropAt, chipNeed, dirsOf, discardLimit, effectAt, envOf, hereFx,
-  isDeep, isLastCard, leaveTile, ownedTiles, putTile,
+  hasGlobal, isDeep, isLastCard, leaveTile, ownedTiles, putTile,
 } from './engine';
 
 export interface OGenome {
@@ -78,11 +78,11 @@ function trashScore(c: Ctx, t: Tile): number {
 /** 排除：置いたタイルから，捨てたい順に，量の範囲で */
 export function planRemove(c: Ctx, flow: Tile[], amount: number, deep: boolean, xcol: number): { remove: number[]; value: number } {
   const owned = ownedTiles(c.p);
-  const big = c.p.perms.includes('BIGDAY');
   const rules = c.s.rules;
+  const big = hasGlobal(c.p.perms, 'BIGDAY', rules);
   // 決心チップは，捨てたいタイル（初期タイル・型に無いタイル）にだけ使う
   const chips = rules.chips ? c.p.chips ?? 0 : 0;
-  const cand = flow.filter(t => canDropAt(t.kind, xcol, rules) || (chips > 0 && trashScore(c, t) >= 5)).sort((a, b) => trashScore(c, b) - trashScore(c, a));
+  const cand = flow.filter(t => !TILES[t.kind].stay && (canDropAt(t.kind, xcol, rules) || (chips > 0 && trashScore(c, t) >= 5))).sort((a, b) => trashScore(c, b) - trashScore(c, a));
   const chosen: Tile[] = [];
   for (const t of cand) {
     const need = chipNeed([...chosen, t], [], xcol, amount, rules, big);
@@ -105,8 +105,8 @@ export function planRemove(c: Ctx, flow: Tile[], amount: number, deep: boolean, 
 }
 
 function planRoomba(c: Ctx, flow: Tile[], removed: number[]): number | undefined {
-  if (!c.p.perms.includes('ROOMBA')) return undefined;
-  const left = flow.filter(t => !removed.includes(t.id)).sort((a, b) => trashScore(c, b) - trashScore(c, a))[0];
+  if (!hasGlobal(c.p.perms, 'ROOMBA', c.s.rules)) return undefined;
+  const left = flow.filter(t => !removed.includes(t.id) && !TILES[t.kind].stay).sort((a, b) => trashScore(c, b) - trashScore(c, a))[0];
   if (!left) return undefined;
   const fewLeft = ownedTiles(c.p).length - removed.length <= 5;
   return trashScore(c, left) >= 5 || fewLeft ? left.id : undefined;
@@ -115,7 +115,7 @@ function planRoomba(c: Ctx, flow: Tile[], removed: number[]): number | undefined
 /** 今止めたときの価値 */
 function stopValue(c: Ctx, w: Walk): number {
   const pw = effectAt(c.env, w.placed, w.pos);
-  const rb = c.p.perms.includes('ROOMBA') && w.placed.length ? 2 : 0;
+  const rb = hasGlobal(c.p.perms, 'ROOMBA', c.s.rules) && w.placed.length ? 2 : 0;
   if (pw.kind === 'buy') return planBuy(c, pw.amount, w.pos.x).value + rb;
   if (pw.kind === 'remove') return planRemove(c, w.placed, pw.amount, isDeep(w.pos.y, c.s.board), w.pos.x).value + (w.placed.length > 1 ? rb : 0);
   // 福袋：何が出るかわからないが1枚もらえる．運試し：量は 0〜袋の残り枚数（平均はその半分）
