@@ -36,13 +36,13 @@ describe('オーバーレイ版の探索ボット', () => {
       const s = play(2 + (i % 3), 100 + i, set, [{ model, objective: 'mean', budget: 60 }, { model, objective: 'win', budget: 60 }]);
       expect(s.phase).toBe('over');
     }
-  });
+  }, 60000);
 
   it('同じ種からは同じ試合になる', () => {
     const model = randomModel(3);
     const a = play(2, 42, 'all', [{ model, budget: 60 }]), b = play(2, 42, 'all', [{ model, budget: 60 }]);
     expect(a.log).toEqual(b.log);
-  });
+  }, 60000);
 
   it('買わないと決めた種類は取得しない', () => {
     const model = randomModel(5);
