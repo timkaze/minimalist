@@ -2,7 +2,7 @@
 //   コマは描かない．「今止めるとどのマスの効果になるか」を盤（光るマス）とパネルに常に出す
 
 import './ui.css';
-import { ARROW, Dir, Fx, MARKET, OKind, TILES, TILE_SETS, UNLIMITED_KINDS, dirsText, fxText, marketFromChoice, startingBag, tileDirs, weightOf } from './tiles';
+import { ARROW, Dir, Fx, MARKET, OKind, TILES, TILE_SETS, UNLIMITED_KINDS, carryText, dirsText, fxText, marketFromChoice, startingBag, tileDirs, weightOf } from './tiles';
 import { OMAX_SEATS, ORoomInfo, OServerMsg } from './protocol';
 import {
   DEFAULT_RULES, OAction, OBOARDS, OPlayer, OState, Pos, Rules, Tile, X_MAX, X_MIN, applyOverlay, canBuyAt, canDraw, canDropAt, canMove,
@@ -104,20 +104,21 @@ function tileHTML(kind: OKind, o: { fx?: Fx; cls?: string; attr?: string; seq?: 
   const center = d.perm ? '<span class="fx">★</span>'
     : fx.kind === 'none' ? '<span class="fx none">–</span>'
     : `<span class="fx"><small>${fx.kind === 'buy' ? '額' : '量'}</small>${kind === 'LIGHT' && !s ? '?' : fx.amount}</span>`;
+  const carry = d.boost && rules.carry ? `<span class="c-carry" title="盤にあるあいだ，止まったマスの量 +${d.boost}">運ぶ+${d.boost}</span>` : '';
   const tl = o.seq ? `<span class="seq">${o.seq}</span>` : o.cost && d.cost !== null ? `<span class="c-cost" title="取得コスト">${d.cost}</span>` : '';
   const tr = (o.stack ?? 0) > 1 ? `<span class="stk">${o.stack}枚</span>` : (o.count ?? 0) > 1 ? `<span class="cnt">×${o.count}</span>`
     : o.cost && rules.needs && d.buyNeed ? `<span class="c-imp" title="衝動${d.buyNeed}以上の列で取得">衝${d.buyNeed}</span>` : '';
   const bl = d.perm ? '' : `<span class="c-w" title="捨てる重さ">重${weightOf(kind, rules)}</span>`;
   const br = rules.needs && d.dropNeed ? `<span class="c-calm" title="理性${d.dropNeed}以上の列で排除">理${d.dropNeed}</span>` : '';
   return `<div class="tile k-${d.perm ? 'perm' : fx.kind} ${dirs.length || d.perm ? '' : 'stay'} ${o.cls ?? ''}" ${o.attr ?? ''} title="${esc(tileTitle(kind))}">
-    ${dirs.map(x => `<i class="ar ${x}"></i>`).join('')}${center}<span class="nm">${d.name}</span>${tl}${tr}${bl}${br}</div>`;
+    ${dirs.map(x => `<i class="ar ${x}"></i>`).join('')}${center}${carry}<span class="nm">${d.name}</span>${tl}${tr}${bl}${br}</div>`;
 }
 
 function tileTitle(kind: OKind): string {
   const d = TILES[kind];
   const rules = R();
   if (d.perm) return `★${d.name}：${d.note}`;
-  return `${d.name}：${dirsText(tileDirs(kind, rules))}／置いたマスは${fxText(d.fx)}${d.note ? `（${d.note}）` : ''}／重さ${weightOf(kind, rules)}`;
+  return `${d.name}：${dirsText(tileDirs(kind, rules))}／置いたマスは${fxText(d.fx)}${d.boost && rules.carry ? `／${carryText(d.boost)}` : ''}${d.note ? `（${d.note}）` : ''}／重さ${weightOf(kind, rules)}`;
 }
 
 /** 効果つきの説明カード（市場・開始画面） */
@@ -129,8 +130,9 @@ function infoHTML(kind: OKind, extra = '', count = 0): string {
     !d.perm ? `<span class="badge w">重さ${weightOf(kind, rules)}</span>` : '',
     rules.needs && d.buyNeed ? `<span class="badge imp">衝動${d.buyNeed}で取得</span>` : '',
     rules.needs && d.dropNeed ? `<span class="badge calm">理性${d.dropNeed}で排除</span>` : '',
+    d.boost && rules.carry ? `<span class="badge carry">量 +${d.boost} を運ぶ</span>` : '',
   ].join('');
-  const text = d.perm ? d.note : `${dirsText(tileDirs(kind, rules))}${d.note && kind !== 'JUNK' ? `．${d.note}` : ''}`;
+  const text = d.perm ? d.note : `${dirsText(tileDirs(kind, rules))}${d.boost && rules.carry ? `．${carryText(d.boost)}` : ''}${d.note && kind !== 'JUNK' ? `．${d.note}` : ''}`;
   return `<div class="info ${d.perm ? 'perm' : ''}">${tileHTML(kind, { count, cost: true })}
     <div class="it"><div class="in"><b>${d.perm ? '★' : ''}${d.name}</b></div>
       <div class="id">${esc(text ?? '')}</div><div class="ib">${badges}</div>${extra}</div></div>`;
@@ -154,6 +156,8 @@ const RULE_OPTS: { key: keyof Rules; label: string; choices: [string, string][] 
   { key: 'weights', label: '捨てる重さ', choices: [['heavy', '重い（欲しい2・↑へ行くタイル2・ガラクタ2）'], ['light', '軽い（ガラクタ2，ほかは1）']] },
   { key: 'chips', label: '決心チップ', choices: [['true', 'あり（排除できなかった手番に1枚．重さ1か条件1段階に使える）'], ['false', 'なし']] },
   { key: 'junk', label: 'ガラクタの矢印', choices: [['right', '→だけ'], ['four', '4方向']] },
+  { key: 'carry', label: '量を運ぶタイル', choices: [['true', 'あり（「運ぶ +n」のタイルは，盤にあるあいだ止まったマスの量 +n）'], ['false', 'なし（v0.4 まで）']] },
+  { key: 'bigBag', label: '初期の袋', choices: [['false', 'ふつう（欲しい2・迷い1・ガラクタ1＋ためらい）'], ['true', '多め（欲しい3・迷い2・ガラクタ2＋ためらい）']] },
   { key: 'special', label: '特別なマス', choices: [['true', 'あり（捨欲の中の額マス・福袋・運試し）'], ['false', 'なし']] },
   { key: 'traces', label: '片付けた跡の壁', choices: [['false', 'なし'], ['true', 'あり（排除したマスに入れなくなる）']] },
   { key: 'board', label: '盤', choices: Object.values(OBOARDS).map(b => [b.name, b.label] as [string, string]) },

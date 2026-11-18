@@ -1,0 +1,11 @@
+== mid_b6r7_carry: OV_TILES={"BIGDAY":{"cost":6},"ROOMBA":{"cost":7},"CALM":{"boost":1},"DOWN2":{"boost":1,"cost":3},"MEMO":{"boost":2}} RULES={} SET=all
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_mid_b6r7_carry
+[1] データ 90780行（作成 133秒，終わらなかった人 2.3%）学習 2秒  検証 CE 2.008  手番数の誤差 3.06（平均で当てた場合 5.81）
+[2] データ 181398行（作成 128秒，終わらなかった人 12.5%）学習 2秒  検証 CE 1.982  手番数の誤差 4.80（平均で当てた場合 9.33）
+[3] データ 255140行（作成 95秒，終わらなかった人 0.8%）学習 2秒  検証 CE 1.912  手番数の誤差 4.04（平均で当てた場合 7.99）
+[4] データ 322025行（作成 90秒，終わらなかった人 0.3%）学習 3秒  検証 CE 1.821  手番数の誤差 3.40（平均で当てた場合 6.94）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_mid_b6r7_carry/value_last.json（計 455秒）
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_mid_b6r7_carry
+[refit] データ 322025行  検証 CE 1.806  手番数の誤差 3.32（平均で当てた場合 6.94）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_mid_b6r7_carry/value.json
+== done mid_b6r7_carry

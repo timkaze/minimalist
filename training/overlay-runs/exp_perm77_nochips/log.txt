@@ -1,0 +1,11 @@
+== perm77_nochips: OV_TILES={"BIGDAY":{"cost":7},"ROOMBA":{"cost":7}} RULES={"chips":false} SET=all
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_perm77_nochips
+[1] データ 130576行（作成 114秒，終わらなかった人 23.5%）学習 2秒  検証 CE 1.843  手番数の誤差 6.21（平均で当てた場合 13.51）
+[2] データ 249261行（作成 181秒，終わらなかった人 25.5%）学習 2秒  検証 CE 1.746  手番数の誤差 6.23（平均で当てた場合 14.21）
+[3] データ 346248行（作成 97秒，終わらなかった人 8.9%）学習 3秒  検証 CE 1.765  手番数の誤差 5.65（平均で当てた場合 13.55）
+[4] データ 437314行（作成 94秒，終わらなかった人 7.3%）学習 4秒  検証 CE 1.759  手番数の誤差 5.25（平均で当てた場合 12.97）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_perm77_nochips/value_last.json（計 497秒）
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_perm77_nochips
+[refit] データ 437314行  検証 CE 1.756  手番数の誤差 5.15（平均で当てた場合 12.97）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_perm77_nochips/value.json
+== done perm77_nochips

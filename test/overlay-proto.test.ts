@@ -21,13 +21,18 @@ function pass(s: OState) {
 }
 
 describe('オーバーレイ版の試作タイル', () => {
-  it('勢い：盤にあるあいだ，止まったマスの量 +1（重なる）', () => {
+  it('量を運ぶ（勢い・断捨離・冷静）：盤にあるあいだ，止まったマスの量 +1（重なる）', () => {
     const s = game();
     stack(s, 'MOMENTUM', 'MOMENTUM'); // (0,-1) 量1，(0,-2) は額2 の特別なマス
     draw(s);
     expect(here(s)).toEqual({ kind: 'remove', amount: 2 });
     draw(s);
     expect(here(s)).toEqual({ kind: 'buy', amount: 2 }); // 額には足さない
+    const t = game();
+    stack(t, 'DOWN2', 'CALM'); // 断捨離で(0,-1)，冷静で(-1,-1)：盤の印刷は量1，運ぶ +1 が2枚
+    draw(t); draw(t);
+    expect(t.players[0].pos).toEqual({ x: -1, y: -1 });
+    expect(here(t)).toEqual({ kind: 'remove', amount: 3 });
   });
 
   it('ひきかえす：1つ前に置いたタイルのマスへ戻り，そのタイルの効果を使える', () => {
@@ -35,7 +40,7 @@ describe('オーバーレイ版の試作タイル', () => {
     stack(s, 'DOWN2', 'BACK'); // 断捨離（↓・量2）を START に置いて下へ → ひきかえすで START の断捨離の上へ
     draw(s); draw(s);
     expect(s.players[0].pos).toEqual({ x: 0, y: 0 });
-    expect(here(s)).toEqual({ kind: 'remove', amount: 2 });
+    expect(here(s)).toEqual({ kind: 'remove', amount: 3 }); // 断捨離の量2 ＋ 断捨離が運ぶ +1
     const t = game();
     stack(t, 'BACK'); // 1枚目なら動かない（自分の額2）
     draw(t);
@@ -100,9 +105,9 @@ describe('盤に置くお気に入り（favBoard）', () => {
   it('取得したら盤に置く（場所は選べる．START や置いてあるマスは不可）', () => {
     const s = game({ favBoard: true });
     const p = s.players[0];
-    stack(s, 'RUSH', 'RUSH', 'UP2', 'UP2'); // (2,2)：額 3+2 = 5，衝動2
-    for (let i = 0; i < 4; i++) draw(s);
-    expect(here(s)).toEqual({ kind: 'buy', amount: 5 });
+    stack(s, 'RUSH', 'RUSH', 'UP2', 'UP2', 'UP2'); // (2,3)：額 4+2 = 6，衝動2
+    for (let i = 0; i < 5; i++) draw(s);
+    expect(here(s)).toEqual({ kind: 'buy', amount: 6 });
     stop(s);
     expect(() => applyOverlay(s, 0, { type: 'resolve', buy: ['BIGDAY'], remove: [], place: [{ kind: 'BIGDAY', pos: { x: 0, y: 0 } }] })).toThrow();
     applyOverlay(s, 0, { type: 'resolve', buy: ['BIGDAY'], remove: [], place: [{ kind: 'BIGDAY', pos: { x: 0, y: -1 } }] });

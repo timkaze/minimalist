@@ -1,0 +1,12 @@
+== favboard_cheap: OV_TILES={"BIGDAY":{"cost":3,"buyNeed":1},"ROOMBA":{"cost":3}} RULES={"favBoard":true} SET=all
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_favboard_cheap
+[1] データ 101460行（作成 79秒，終わらなかった人 7.4%）学習 2秒  検証 CE 2.049  手番数の誤差 4.28（平均で当てた場合 8.91）
+[2] データ 212260行（作成 194秒，終わらなかった人 13.7%）学習 2秒  検証 CE 2.049  手番数の誤差 5.48（平均で当てた場合 10.50）
+[3] データ 289712行（作成 91秒，終わらなかった人 0.2%）学習 3秒  検証 CE 1.945  手番数の誤差 4.52（平均で当てた場合 8.92）
+[4] データ 360653行（作成 77秒，終わらなかった人 0.1%）学習 3秒  検証 CE 1.875  手番数の誤差 3.79（平均で当てた場合 7.85）
+[5] データ 430599行（作成 76秒，終わらなかった人 0.1%）学習 3秒  検証 CE 1.803  手番数の誤差 3.40（平均で当てた場合 7.06）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_favboard_cheap/value_last.json（計 531秒）
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_favboard_cheap
+[refit] データ 430599行  検証 CE 1.798  手番数の誤差 3.37（平均で当てた場合 7.06）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_favboard_cheap/value.json
+== done favboard_cheap

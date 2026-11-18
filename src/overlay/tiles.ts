@@ -45,7 +45,7 @@ export interface TileDef {
   buyNeed?: number;
   /** 排除するには理性がこの値以上の列で止まる */
   dropNeed?: number;
-  /** 盤にあるあいだ（置いた手番のあいだ），止まったマスの量をこの数だけ増やす */
+  /** 量を運ぶ：盤にあるあいだ（置いた手番のあいだ），止まったマスの量をこの数だけ増やす（何枚でも重なる．ルール carry） */
   boost?: number;
   /** 矢印の代わりに，1つ前に置いたタイルのマスへ戻る */
   back?: boolean;
@@ -77,22 +77,24 @@ export const TILES: Record<OKind, TileDef> = {
   SWING:  t('SWING', '行ったり来たり', ['U', 'D'], buy(2), 3, { heavy: 2 }),
   UP2:    t('UP2', '欲しい欲しい', ['U'], buy(3), 1, { heavy: 2 }),
   RUSH:   t('RUSH', '衝動買い', ['R'], buy(3), 1),
-  CALM:   t('CALM', '冷静', ['L'], rem(2), 3),
-  DOWN2:  t('DOWN2', '断捨離', ['D'], rem(2), 4),
+  // v0.5：矢印のある量のタイルは「量を運ぶ」（盤にあるあいだ，止まったマスの量 +n）．置いたマスに量を残すだけでは，出ていくので使われなかった
+  CALM:   t('CALM', '冷静', ['L'], rem(2), 3, { boost: 1 }),
+  DOWN2:  t('DOWN2', '断捨離', ['D'], rem(2), 3, { boost: 1 }),
   LIGHT:  t('LIGHT', '軽やか', ['D'], rem(0), 4, { note: `量は排除した枚数÷${LIGHT_PER}（最大${LIGHT_MAX}）` }),
   DRAG:   t('DRAG', '道連れ袋', ['D'], buy(2), 3, { drag: true, buyNeed: 1, note: '排除したとき，置いたタイルからもう1枚を重さ0で排除' }),
-  MEMO:   t('MEMO', '思い出の品', ['U'], rem(3), 3, { heavy: 2, dropNeed: 2 }),
+  MEMO:   t('MEMO', '思い出の品', ['U'], rem(3), 3, { heavy: 2, dropNeed: 2, boost: 2 }),
   FREE:   t('FREE', '気まま', ['U', 'D', 'L', 'R'], buy(2), 5, { heavy: 2 }),
   REST:   t('REST', 'ひと休み', [], rem(2), 3),
   TREAT:  t('TREAT', 'ご褒美', [], buy(4), 3),
   CLEAN:  t('CLEAN', '大掃除', [], rem(4), 5, { buyNeed: 2 }),
-  ROOMBA:   t('ROOMBA', 'ルンバ', [], NO_FX, 5, { perm: true, weight: 0, buyNeed: 1, note: '手番の終わりに，どこで止まっても置いたタイルから1枚を排除できる（条件・重さなし）' }),
-  BIGDAY:   t('BIGDAY', '大掃除の日', [], NO_FX, 4, { perm: true, weight: 0, buyNeed: 2, note: '捨てるマスで止まったら，置いたタイルを何枚でも排除できる（量・重さを無視）' }),
+  // v0.5：ルンバ 5→6，大掃除の日 4→6（強いボット同士だと勝者の全員が持っていた）
+  ROOMBA:   t('ROOMBA', 'ルンバ', [], NO_FX, 6, { perm: true, weight: 0, buyNeed: 1, note: '手番の終わりに，どこで止まっても置いたタイルから1枚を排除できる（条件・重さなし）' }),
+  BIGDAY:   t('BIGDAY', '大掃除の日', [], NO_FX, 6, { perm: true, weight: 0, buyNeed: 2, note: '捨てるマスで止まったら，置いたタイルを何枚でも排除できる（量・重さを無視）' }),
   BAG:      t('BAG', '大容量ゴミ袋', [], NO_FX, 4, { perm: true, weight: 0, buyNeed: 2, note: '捨てるマスで止まったら，捨て山からも量と同じ枚数まで排除できる（重さなし）' }),
   COMPASS:  t('COMPASS', 'コンパス', [], NO_FX, 6, { perm: true, weight: 0, buyNeed: 1, note: '矢印のあるタイルを好きな向きに出られる' }),
   KODAWARI: t('KODAWARI', 'こだわり', [], NO_FX, 4, { perm: true, weight: 0, buyNeed: 1, note: '止まったマスの額・量 +1' }),
   // ---- 試作 ----
-  MOMENTUM: t('MOMENTUM', '勢い', ['D'], NO_FX, 3, { boost: 1, note: '盤にあるあいだ，止まったマスの量 +1（何枚でも重なる）' }),
+  MOMENTUM: t('MOMENTUM', '勢い', ['D'], NO_FX, 3, { boost: 1 }),
   BACK:     t('BACK', 'ひきかえす', [], buy(2), 3, { back: true, note: '1つ前に置いたタイルのマスへ戻る（そのタイルの効果を使える）．1枚目なら動かない' }),
   STACK:    t('STACK', '山積み', [], rem(0), 3, { stack: true, note: '量＝このマスにこの手番に重ねたタイルの枚数（これも数える）' }),
   SHELF:    t('SHELF', '収納棚', [], rem(2), 4, { stay: true, note: '手番の終わりに盤に残り（持ち物から外れる），そのマスがずっと量2になる．START・お気に入りのマス・棚のあるマスでは残らず捨て山へ．排除できない' }),
@@ -124,6 +126,8 @@ export const GACHA_POOL: [OKind, number][] = [
   ['FREE', 2], ['TREAT', 2], ['REST', 2], ['DOWN2', 2], ['CALM', 2], ['BREATH', 1], ['BR', 1],
   ['DOWN', 3], ['UP2', 2], ['RUSH', 1], ['WANT', 2], ['JUNK', 1],
 ];
+/** 「量を運ぶ」の説明文 */
+export const carryText = (n: number) => `盤にあるあいだ，止まったマスの量 +${n}（運ぶ）`;
 export const dirsText = (dirs: Dir[]) => (dirs.length ? dirs.map(d => ARROW[d]).join('か') : '動かない');
 
 // ---- 市場に並べるタイルのセット（開始時に選ぶ）．片付けたいは必ず入る ----

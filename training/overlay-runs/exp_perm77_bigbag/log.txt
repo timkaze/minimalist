@@ -1,0 +1,11 @@
+== perm77_bigbag: OV_TILES={"BIGDAY":{"cost":7},"ROOMBA":{"cost":7}} RULES={"bigBag":true} SET=all
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_perm77_bigbag
+[1] データ 111394行（作成 210秒，終わらなかった人 12.5%）学習 2秒  検証 CE 1.953  手番数の誤差 5.00（平均で当てた場合 11.00）
+[2] データ 211735行（作成 213秒，終わらなかった人 15.7%）学習 2秒  検証 CE 1.900  手番数の誤差 5.52（平均で当てた場合 12.19）
+[3] データ 293560行（作成 191秒，終わらなかった人 1.6%）学習 2秒  検証 CE 1.880  手番数の誤差 4.71（平均で当てた場合 10.75）
+[4] データ 371054行（作成 157秒，終わらなかった人 0.7%）学習 3秒  検証 CE 1.880  手番数の誤差 4.11（平均で当てた場合 9.49）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_perm77_bigbag/value_last.json（計 781秒）
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_perm77_bigbag
+[refit] データ 371054行  検証 CE 1.872  手番数の誤差 4.07（平均で当てた場合 9.49）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_perm77_bigbag/value.json
+== done perm77_bigbag

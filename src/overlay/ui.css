@@ -62,6 +62,7 @@ h3 { margin: 18px 0 8px; font-size: 13px; letter-spacing: .08em; color: #c8cede;
 .tile .c-cost { left: .2em; top: .2em; min-width: 1.5em; height: 1.5em; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #2a1f05; background: radial-gradient(circle at 35% 30%, #fff1b8, #f0b030); box-shadow: 0 .06em 0 #8a6414; }
 .tile .c-imp { right: .2em; top: .22em; color: #fff; background: #d98312; }
 .tile .c-w { left: .2em; bottom: .28em; color: #fff; background: #7d5a50; }
+.tile .c-carry { font-size: .36em; font-weight: 800; line-height: 1; padding: .14em .4em; margin-top: .1em; border-radius: .6em; color: #fff; background: #c93a2e; letter-spacing: -.03em; white-space: nowrap; }
 .tile .c-calm { right: .2em; bottom: .28em; color: #fff; background: #2f8f58; }
 .tile .seq { position: absolute; left: .25em; top: .22em; font-size: .4em; font-weight: 700; background: var(--tile-ink); color: var(--tile); border-radius: 50%; width: 1.5em; height: 1.5em; display: flex; align-items: center; justify-content: center; }
 .tile .stk { position: absolute; right: .3em; top: .25em; font-size: .38em; font-weight: 700; color: #6b4a00; background: #ffe08a; border-radius: .5em; padding: .15em .35em; }
@@ -85,6 +86,7 @@ h3 { margin: 18px 0 8px; font-size: 13px; letter-spacing: .08em; color: #c8cede;
 .info .ib { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
 .badge { font-size: 10px; font-weight: 700; border-radius: 4px; padding: 0 5px; border: 1px solid var(--line); color: var(--muted); }
 .badge.bc { color: var(--gold); border-color: #8a6e2a; } .badge.w { color: #d9a99c; border-color: #7d5a50; }
+.badge.carry { color: #f08a80; border-color: #c93a2e; }
 .badge.imp { color: var(--imp); border-color: var(--imp); } .badge.calm { color: var(--calm); border-color: var(--calm); }
 .stock { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); margin-top: 3px; }
 .pm { display: inline-flex; align-items: center; gap: 6px; } .pm b { color: var(--ink); min-width: 1em; text-align: center; }

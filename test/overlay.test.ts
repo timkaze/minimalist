@@ -191,8 +191,12 @@ describe('オーバーレイ版', () => {
     draw(s); draw(s);
     expect(s.players[0].pos).toEqual({ x: 0, y: -2 });
     expect(here(s)).toEqual({ kind: 'buy', amount: 2 });
-    draw(s); draw(s); // 断捨離（量2）を置いて↓，欲しいで↑へ戻る
-    expect(here(s)).toEqual({ kind: 'remove', amount: 2 });
+    draw(s); draw(s); // 断捨離（量2）を置いて↓，欲しいで↑へ戻る．断捨離は盤にあるあいだ量 +1 を運ぶので 2+1
+    expect(here(s)).toEqual({ kind: 'remove', amount: 3 });
+    const t = game({ carry: false }); // 量を運ぶルールなしなら，置いたタイルの数字のまま
+    stack(t, 'DOWN', 'DOWN', 'DOWN2', 'WANT');
+    for (let i = 0; i < 4; i++) draw(t);
+    expect(here(t)).toEqual({ kind: 'remove', amount: 2 });
     expect(printedFx({ x: 0, y: -2 }, OBOARDS.gentle, { ...DEFAULT_RULES, special: false }).kind).toBe('remove');
   });
 

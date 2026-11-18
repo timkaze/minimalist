@@ -1,0 +1,11 @@
+== perm77_carry: OV_TILES={"BIGDAY":{"cost":7},"ROOMBA":{"cost":7},"CALM":{"boost":1},"DOWN2":{"boost":1,"cost":3},"MEMO":{"boost":1}} RULES={} SET=all
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_perm77_carry
+[1] データ 98616行（作成 129秒，終わらなかった人 3.4%）学習 2秒  検証 CE 2.009  手番数の誤差 3.70（平均で当てた場合 6.93）
+[2] データ 182531行（作成 128秒，終わらなかった人 7.5%）学習 2秒  検証 CE 1.986  手番数の誤差 4.30（平均で当てた場合 8.10）
+[3] データ 254324行（作成 106秒，終わらなかった人 0.5%）学習 2秒  検証 CE 1.927  手番数の誤差 3.57（平均で当てた場合 6.83）
+[4] データ 321719行（作成 94秒，終わらなかった人 0.2%）学習 2秒  検証 CE 1.845  手番数の誤差 3.18（平均で当てた場合 6.16）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_perm77_carry/value_last.json（計 465秒）
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_perm77_carry
+[refit] データ 321719行  検証 CE 1.838  手番数の誤差 3.09（平均で当てた場合 6.16）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_perm77_carry/value.json
+== done perm77_carry

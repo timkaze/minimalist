@@ -62,8 +62,10 @@ export interface Rules {
   favBoard: boolean;
   /** 初期の袋を多めにする（欲しい3・迷い2・ガラクタ2＋ためらい．ゲームが長くなり，買ったタイルを使う回数が増える） */
   bigBag: boolean;
+  /** 量を運ぶ：「運ぶ +n」と書いたタイルは，盤にあるあいだ（置いた手番のあいだ），止まったマスの量を +n する．false なら効かない（v0.4 までの動き） */
+  carry: boolean;
 }
-export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 2, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: true, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false };
+export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 2, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: true, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true };
 
 /** 外から来たルールを整える（不正な値は既定に） */
 export function normRules(r: Partial<Rules> | undefined | null): Rules {
@@ -85,6 +87,7 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
     chips: bool(x.chips, d.chips),
     favBoard: bool(x.favBoard, d.favBoard),
     bigBag: bool(x.bigBag, d.bigBag),
+    carry: bool(x.carry, d.carry),
   };
 }
 
@@ -169,7 +172,7 @@ export function effectAt(env: Env, placed: Placed[], pos: Pos): Fx {
   }
   if ((fx.kind !== 'buy' && fx.kind !== 'remove') || fx.amount >= UNLIMITED) return fx;
   let add = env.perms.includes('KODAWARI') ? 1 : 0;
-  if (fx.kind === 'remove') for (const t of placed) add += TILES[t.kind].boost ?? 0; // 勢い
+  if (fx.kind === 'remove' && env.rules.carry) for (const t of placed) add += TILES[t.kind].boost ?? 0; // 量を運ぶタイル
   return add ? { kind: fx.kind, amount: fx.amount + add } : fx;
 }
 
