@@ -1,0 +1,13 @@
+== v05: OV_TILES= RULES={} SET=all
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_v05
+[1] データ 79159行（作成 108秒，終わらなかった人 0.1%）学習 2秒  検証 CE 1.539  手番数の誤差 1.10（平均で当てた場合 3.03）
+[2] データ 165296行（作成 128秒，終わらなかった人 2.5%）学習 1秒  検証 CE 1.683  手番数の誤差 1.94（平均で当てた場合 4.29）
+[3] データ 244477行（作成 134秒，終わらなかった人 0.2%）学習 2秒  検証 CE 1.635  手番数の誤差 1.67（平均で当てた場合 3.84）
+[4] データ 321306行（作成 113秒，終わらなかった人 0.0%）学習 3秒  検証 CE 1.597  手番数の誤差 1.53（平均で当てた場合 3.66）
+[5] データ 396466行（作成 113秒，終わらなかった人 0.0%）学習 4秒  検証 CE 1.558  手番数の誤差 1.43（平均で当てた場合 3.49）
+[6] データ 471029行（作成 116秒，終わらなかった人 0.0%）学習 4秒  検証 CE 1.542  手番数の誤差 1.34（平均で当てた場合 3.36）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_v05/value_last.json（計 728秒）
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_v05
+[refit] データ 471029行  検証 CE 1.535  手番数の誤差 1.34（平均で当てた場合 3.36）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_v05/value.json
+== done v05
