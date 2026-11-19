@@ -463,7 +463,7 @@ class Turn {
     if (!this.rules.refill || node.discN === 0) return null;
     return { bag: node.disc, bagN: node.discN, disc: ZERO, discN: 0 };
   }
-  private forced(kind: OKind, hes: number) { return kind === 'HES' && !this.hasYutori && (this.rules.hes === 'first' || hes + 1 >= 2); }
+  private forced(kind: OKind, hes: number) { return kind === 'HES' && (hes + 1 >= 2 || (this.rules.hes === 'first' && !this.hasYutori)); }
 
   /** 次の1枚で分かれる枝の数（種類×向き．必ず止まるタイルは先を読まないので軽く数える） */
   private branching(src: { bag: number[] }, hes: number): number {

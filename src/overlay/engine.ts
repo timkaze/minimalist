@@ -253,7 +253,7 @@ export function leaveTile(env: Env, w: Walk, kind: OKind, dir: Dir | null): bool
   w.pos = exitPos(env, w.placed, w.pos, kind, dir);
   if (kind !== 'HES') return false;
   w.hes++;
-  if (env.perms.includes('YUTORI')) return false; // ゆとり：ためらいで止まらない
+  if (env.perms.includes('YUTORI')) return w.hes >= 2; // ゆとり：1枚目のためらいでは止まらない
   return env.rules.hes === 'first' || w.hes >= 2;
 }
 

@@ -87,24 +87,28 @@ describe('理性のお気に入り（試作）とお気に入りの在庫', () =
     const s = game({}, marketFromChoice('calm'));
     stack(s, 'RUSH', 'UP2', 'UP2'); // (1,2)：額 3+1 = 4，衝動1
     for (let i = 0; i < 3; i++) draw(s);
+    expect(here(s)).toEqual({ kind: 'buy', amount: 4 });
     stop(s);
     expect(() => applyOverlay(s, 0, { type: 'resolve', buy: ['YUTORI'], remove: [] })).toThrow(/理性1以上/);
     const t = game({}, marketFromChoice('calm'));
-    stack(t, 'DOUBT', 'WANT'); // (-1,1)：特別なマスの額3，理性1
+    stack(t, 'DOUBT', 'TREAT'); // 理性1の列でご褒美（額4）を置いてその上で止まる
     draw(t); draw(t); stop(t);
     applyOverlay(t, 0, { type: 'resolve', buy: ['YUTORI'], remove: [] });
     expect(t.players[0].perms).toEqual(['YUTORI']);
   });
 
-  it('ゆとり：ためらいが出ても止まらない', () => {
+  it('ゆとり：その手番の1枚目のためらいでは止まらない（2枚目で止まる）', () => {
     const s = game();
     s.players[0].perms.push('YUTORI');
-    stack(s, 'HES', 'DOWN');
+    stack(s, 'HES', 'DOWN', 'HES');
     draw(s);
     applyOverlay(s, 0, { type: 'branch', dir: 'L' });
     expect(s.turn).toBe('move'); // 止まらず，続けて引ける
     draw(s);
     expect(s.players[0].pos).toEqual({ x: -1, y: -1 });
+    draw(s);
+    applyOverlay(s, 0, { type: 'branch', dir: 'L' });
+    expect(s.turn).toBe('resolve'); // 2枚目で止まる
   });
 
   it('手放す覚悟：排除の条件（理性）を無視できる', () => {
