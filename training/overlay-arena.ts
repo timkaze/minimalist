@@ -121,7 +121,7 @@ const TSX = fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url));
 /** スクリプトを別プロセスで動かし，標準出力を返す */
 export function runProcess(script: string, env: Record<string, string>, args: string[] = []): Promise<string> {
   return new Promise((resolve, reject) => {
-    const c = spawn(TSX, [script, ...args], { env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'inherit'] });
+    const c = spawn(TSX, [script, ...args], { env: { NODE_OPTIONS: '--max-old-space-size=1200', ...process.env, ...env }, stdio: ['ignore', 'pipe', 'inherit'] });
     const chunks: Buffer[] = [];
     c.stdout.on('data', d => chunks.push(d));
     c.on('error', reject);

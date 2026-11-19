@@ -1,0 +1,11 @@
+== calm: OV_TILES= RULES={} SET=calm
+特徴量 115，装置 cuda，出力 /home/tomida/git/minimalist-exp2/training/overlay-runs/fit_exp_calm
+[1] データ 74653行（作成 134秒，終わらなかった人 0.1%）学習 2秒  検証 CE 1.438  手番数の誤差 1.03（平均で当てた場合 2.78）
+[2] データ 151919行（作成 114秒，終わらなかった人 1.4%）学習 1秒  検証 CE 1.618  手番数の誤差 1.57（平均で当てた場合 3.64）
+[3] データ 223626行（作成 122秒，終わらなかった人 0.3%）学習 2秒  検証 CE 1.666  手番数の誤差 1.64（平均で当てた場合 3.53）
+[4] データ 287302行（作成 97秒，終わらなかった人 0.1%）学習 3秒  検証 CE 1.637  手番数の誤差 1.57（平均で当てた場合 3.42）
+保存 /home/tomida/git/minimalist-exp2/training/overlay-runs/exp_calm/value_last.json（計 475秒）
+特徴量 115，装置 cuda，出力 /home/tomida/git/minimalist-exp2/training/overlay-runs/fit_exp_calm
+[refit] データ 287302行  検証 CE 1.630  手番数の誤差 1.55（平均で当てた場合 3.42）
+保存 /home/tomida/git/minimalist-exp2/training/overlay-runs/exp_calm/value.json
+== done calm

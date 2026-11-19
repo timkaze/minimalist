@@ -152,7 +152,7 @@ describe('目標', () => {
     const s = game({ goals: 'bonus' });
     expect(s.goals!.length).toBe(3);
     expect(game().goals).toBeUndefined();
-    s.goals = ['WALK5', 'CALM3', 'JUNK'];
+    s.goals = ['WALK7', 'CALM3', 'TOP'];
     const p = s.players[0];
     stack(s, 'DOUBT', 'DOUBT', 'DOUBT'); // 理性3の列へ
     for (let i = 0; i < 3; i++) draw(s);
@@ -171,13 +171,14 @@ describe('目標', () => {
     draw(s); stop(s);
     expect(() => applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [p.placed[0].id] })).toThrow(/目標をあと1つ/);
     const t = game({ goals: 'need1' });
-    t.goals = ['DUMP3', 'IMP3', 'BIGBUY'];
+    t.goals = ['DUMP4', 'IMP3', 'BIGBUY'];
     const q = t.players[0];
-    stack(t, 'DOWN2', 'DOWN', 'DOWN'); q.discard = []; // (0,-3)：量2＋運ぶ1 = 3．3枚まとめて排除＝目標達成と同時に終われる
-    for (let i = 0; i < 3; i++) draw(t);
+    stack(t, 'DOWN2', 'DOWN', 'DOWN', 'DOWN'); q.discard = []; // (0,-4)：量2＋運ぶ1 = 3，重さ4には決心チップ1枚．4枚まとめて排除＝目標達成と同時に終われる
+    q.chips = 1;
+    for (let i = 0; i < 4; i++) draw(t);
     stop(t);
     applyOverlay(t, 0, { type: 'resolve', buy: [], remove: q.placed.map(c => c.id) });
-    expect(q.goals).toEqual(['DUMP3']);
+    expect(q.goals).toEqual(['DUMP4']);
     expect(q.finished).toBe(true);
   });
 

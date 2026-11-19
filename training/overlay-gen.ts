@@ -43,7 +43,9 @@ function makeAgent(market: OKind[]): { act: Agent; ban: OKind[] } {
     ban = r < 0.4 ? [...PERMS] : r < 0.7 ? pickOf(FAMILIES) : market.filter(k => k !== 'DOWN' && rand() < 0.3);
     for (const k of ban) delete bonus[k];
   }
-  const o = { model, objective: 'mean' as const, budget: BUDGET, bonus, ban, epsBuy: 0.03, epsPlace: 0.5, rand };
+  // 目標のあるルール：6割の席は「目標を達成すると上乗せ」を付けて，目標を取りに行く動きを経験させる
+  const goalBonus = RULES.goals && RULES.goals !== 'off' && rand() < 0.6 ? 0.5 + 2.5 * rand() : 0;
+  const o = { model, objective: 'mean' as const, budget: BUDGET, bonus, ban, goalBonus, epsBuy: 0.03, epsPlace: 0.5, rand };
   return { act: s => chooseSearchAction(s, o), ban };
 }
 

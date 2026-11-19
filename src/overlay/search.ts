@@ -23,6 +23,8 @@ export interface SearchOpts {
   ban?: OKind[];
   /** 学習データ用：取得をでたらめに選ぶ確率 */
   epsBuy?: number;
+  /** 学習データ用：目標を1つ達成するごとに点数を上乗せ（V がまだ目標を知らないうちから，目標を取りに行かせる） */
+  goalBonus?: number;
   /** 学習データ用：盤に置くお気に入りの置き場所をでたらめに選ぶ確率（START から3歩以内） */
   epsPlace?: number;
   rand?: () => number;
@@ -142,15 +144,16 @@ class Turn {
     this.o.model.dist(this.x, this.d);
     let v = 0;
     for (let t = 1; t <= BINS; t++) v += this.d[t - 1] * this.u[t];
-    if (cache) this.vCache.set(key, v);
+    if (cache) { if (this.vCache.size > 200000) this.vCache.clear(); this.vCache.set(key, v); } // 袋が大きい局面でメモリが膨らまないように
     return v;
   }
 
   /** 排除の有無から決心チップの増減を決めて点数にする */
   private finish(bag: ArrayLike<number>, disc: ArrayLike<number>, permMask: number, spent: number, nRemoved: number, stock: ArrayLike<number>, ext: Ext, cache = true, junk = false, buyCost = 0): number {
-    // 目標のうち，選び方で決まるもの（3枚以上排除・ガラクタを排除・合計コスト5以上）
+    // 目標のうち，選び方で決まるもの（4枚以上排除・合計コスト5以上）．junk は「ガラクタを排除したか」（今の目標には無いが，判定の口は残してある）
+    void junk;
     if (this.goalsOn) {
-      const dyn = ((nRemoved >= 3 ? GOAL_BIT.DUMP3 : 0) | (junk ? GOAL_BIT.JUNK : 0) | (buyCost >= 5 ? GOAL_BIT.BIGBUY : 0)) & this.goalsOn & ~ext.g;
+      const dyn = ((nRemoved >= 4 ? GOAL_BIT.DUMP4 : 0) | (buyCost >= 5 ? GOAL_BIT.BIGBUY : 0)) & this.goalsOn & ~ext.g;
       if (dyn) ext = this.ext(ext.shelves, ext.furn, ext.g | dyn);
     }
     let chips = this.chips - spent;
@@ -158,7 +161,8 @@ class Turn {
       chips = Math.min(MAX_CHIPS, chips + popcount(ext.g & ~this.g0)); // 目標を達成したぶん
       if ((nRemoved === 0 || this.hasKakeibo) && chips < MAX_CHIPS) chips++;
     }
-    return this.leaf(bag, disc, permMask, chips, this.p.removed + nRemoved, stock, ext, cache);
+    const v = this.leaf(bag, disc, permMask, chips, this.p.removed + nRemoved, stock, ext, cache);
+    return this.o.goalBonus && ext.g !== this.g0 ? v + this.o.goalBonus * popcount(ext.g & ~this.g0) : v;
   }
 
   /** 止まったときの下ごしらえ（盤に残る棚・盤のルンバが吸うタイルを先に引いておく） */
@@ -324,6 +328,31 @@ class Turn {
     // 置いたタイルの部分集合を全部（種類ごとの枚数）
     const tops: Plan[] = [];
     const flow = new Array(NK).fill(0), tiles: Tile[] = [];
+    // 組み合わせが多すぎるとき（大掃除の日でたくさん置いた，など）は，良くなるあいだ1枚ずつ足す
+    let combos = 1;
+    for (const k of kinds) combos *= pc[k] + 1;
+    const greedy = combos > 2048;
+    if (greedy) {
+      const cur = new Array(NK).fill(0), ts: Tile[] = [];
+      const d = discP.slice();
+      let u = this.finish(bag, d, this.permMask, 0, st.base, this.stock, st.ext, cache);
+      for (;;) {
+        let bk = -1, bu = u;
+        for (const k of kinds) {
+          if (cur[k] >= pc[k]) continue;
+          ts.push({ id: 0, kind: BAG_KINDS[k] });
+          const need = chipNeed(ts, [], x, q, rules, this.hasBigday, this.noCond);
+          if (need <= this.chips) {
+            d[k]--; const v = this.finish(bag, d, this.permMask, need, st.base + ts.length, this.stock, st.ext, cache, cur[JUNK_K] > 0 || k === JUNK_K); d[k]++;
+            if (v > bu) { bu = v; bk = k; }
+          }
+          ts.pop();
+        }
+        if (bk < 0) break;
+        cur[bk]++; d[bk]--; ts.push({ id: 0, kind: BAG_KINDS[bk] }); u = bu;
+      }
+      tops.push({ u, buy: [], flow: cur, roomba: -1, disc: null });
+    }
     const rec = (i: number) => {
       if (i === kinds.length) {
         const need = chipNeed(tiles, [], x, q, rules, this.hasBigday, this.noCond);
@@ -343,7 +372,7 @@ class Turn {
       for (let n = 1; n <= pc[k]; n++) { flow[k]++; tiles.push({ id: 0, kind: BAG_KINDS[k] }); rec(i + 1); }
       for (let n = 1; n <= pc[k]; n++) { flow[k]--; tiles.pop(); }
     };
-    rec(0);
+    if (!greedy) rec(0);
     // 上位について，ルンバ・捨て山からの排除（良くなるあいだ1枚ずつ）を足す
     const limit = discardLimit(this.p, q, deep);
     let best: Plan | null = null;
@@ -451,7 +480,7 @@ class Turn {
     let key = `${fx.kind[0]}${fx.amount}:${node.pos.x < -2 ? -2 : node.pos.x > 2 ? 2 : node.pos.x}:${isDeep(node.pos.y, this.s.board) ? 1 : 0}:${node.discN}:${st.tag}:`;
     for (let i = 0; i < NK; i++) key += String.fromCharCode(48 + pc[i], 48 + node.bag[i]);
     let v = this.stopCache.get(key);
-    if (v === undefined) { v = this.plan(node, false, st).u; this.stopCache.set(key, v); }
+    if (v === undefined) { v = this.plan(node, false, st).u; if (this.stopCache.size > 100000) this.stopCache.clear(); this.stopCache.set(key, v); }
     return v;
   }
 

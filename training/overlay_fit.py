@@ -59,6 +59,8 @@ def node_env():
 
 
 ENV = node_env()
+# 1プロセスが使うメモリの上限（袋が大きくなりすぎた局面で探索が膨らんでも，PC 全体を巻き込まないように）
+ENV.setdefault('NODE_OPTIONS', '--max-old-space-size=1200')
 
 
 def gen(out_dir: Path, mode: str, model, games: int, jobs: int, seed: int, budget: int, rules: str):

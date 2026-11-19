@@ -1,0 +1,11 @@
+== goals_bonus: OV_TILES= RULES={"goals":"bonus"} SET=all
+特徴量 115，装置 cuda，出力 /home/tomida/git/minimalist-exp2/training/overlay-runs/fit_exp_goals_bonus
+[1] データ 72786行（作成 130秒，終わらなかった人 0.2%）学習 2秒  検証 CE 1.428  手番数の誤差 0.99（平均で当てた場合 2.78）
+[2] データ 165072行（作成 214秒，終わらなかった人 6.9%）学習 2秒  検証 CE 1.600  手番数の誤差 2.47（平均で当てた場合 7.06）
+[3] データ 241307行（作成 126秒，終わらなかった人 0.1%）学習 2秒  検証 CE 1.573  手番数の誤差 2.03（平均で当てた場合 5.48）
+[4] データ 314437行（作成 123秒，終わらなかった人 0.1%）学習 3秒  検証 CE 1.536  手番数の誤差 1.80（平均で当てた場合 4.83）
+保存 /home/tomida/git/minimalist-exp2/training/overlay-runs/exp_goals_bonus/value_last.json（計 602秒）
+特徴量 115，装置 cuda，出力 /home/tomida/git/minimalist-exp2/training/overlay-runs/fit_exp_goals_bonus
+[refit] データ 314437行  検証 CE 1.539  手番数の誤差 1.79（平均で当てた場合 4.83）
+保存 /home/tomida/git/minimalist-exp2/training/overlay-runs/exp_goals_bonus/value.json
+== done goals_bonus

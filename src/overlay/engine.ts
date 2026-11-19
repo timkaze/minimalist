@@ -102,16 +102,16 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
 
 // ---- 目標 ----
 
-export type GoalKind = 'DUMP3' | 'BIGBUY' | 'CALM3' | 'IMP3' | 'WALK5' | 'BOTTOM' | 'TOP' | 'JUNK' | 'LUCK' | 'PILE3';
+// 強いボット同士で測って，ほぼ自動で達成されたものは直した：遠出 5枚→7枚（98%），まとめて手放す 3枚→4枚（81%），「ガラクタを排除する」は外した（90%）
+export type GoalKind = 'DUMP4' | 'BIGBUY' | 'CALM3' | 'IMP3' | 'WALK7' | 'BOTTOM' | 'TOP' | 'LUCK' | 'PILE3';
 export const GOALS: Record<GoalKind, { name: string; text: string }> = {
-  DUMP3:  { name: 'まとめて手放す', text: '1手番に3枚以上排除する' },
+  DUMP4:  { name: 'まとめて手放す', text: '1手番に4枚以上排除する' },
   BIGBUY: { name: '大きな買い物', text: '1手番に合計コスト5以上を取得する' },
   CALM3:  { name: '理性の果て', text: '理性3の列で止まる' },
   IMP3:   { name: '衝動の果て', text: '衝動3の列で止まる' },
-  WALK5:  { name: '遠出', text: '1手番に5枚以上置いて止まる' },
+  WALK7:  { name: '遠出', text: '1手番に7枚以上置いて止まる' },
   BOTTOM: { name: 'どん底', text: '一番下の行で止まる' },
   TOP:    { name: 'てっぺん', text: '一番上の行で止まる' },
-  JUNK:   { name: 'ガラクタよさらば', text: 'ガラクタを排除する' },
   LUCK:   { name: '運だめし', text: '福袋か運試しのマスで止まる' },
   PILE3:  { name: '積み重ね', text: '3枚以上重なったマスで止まる' },
 };
@@ -187,14 +187,13 @@ export interface StopInfo { pos: Pos; placed: Placed[]; fx: Fx['kind']; nRemoved
 /** その止まり方で満たす目標（すでに達成したものも含む） */
 export function goalMet(k: GoalKind, b: OBoard, i: StopInfo): boolean {
   switch (k) {
-    case 'DUMP3': return i.nRemoved >= 3;
+    case 'DUMP4': return i.nRemoved >= 4;
     case 'BIGBUY': return i.buyCost >= 5;
     case 'CALM3': return i.pos.x === X_MIN;
     case 'IMP3': return i.pos.x === X_MAX;
-    case 'WALK5': return i.placed.length >= 5;
+    case 'WALK7': return i.placed.length >= 7;
     case 'BOTTOM': return i.pos.y === yMin(b);
     case 'TOP': return i.pos.y === yMax(b);
-    case 'JUNK': return i.junk;
     case 'LUCK': return i.fx === 'gacha' || i.fx === 'lucky';
     case 'PILE3': return stackAt(i.placed, i.pos).length >= 3;
   }
