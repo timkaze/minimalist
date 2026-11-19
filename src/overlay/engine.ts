@@ -39,7 +39,7 @@ export interface Rules {
   cols: 'v06' | 'bonus' | 'none';
   /** 取得・排除の条件（衝動nで取得／理性nで排除） */
   needs: boolean;
-  /** 最後の1枚はどこで止まっても手放せる */
+  /** 最後の1枚はどこで止まっても手放せる（既定は false：最後の1枚も量のマスで，重さと条件を満たして排除する） */
   lastCard: boolean;
   /** 袋が尽きたら捨て山を混ぜて引き続けられる */
   refill: boolean;
@@ -65,7 +65,7 @@ export interface Rules {
   /** 量を運ぶ：「運ぶ +n」と書いたタイルは，盤にあるあいだ（置いた手番のあいだ），止まったマスの量を +n する．false なら効かない（v0.4 までの動き） */
   carry: boolean;
 }
-export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 2, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: true, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true };
+export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 2, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true };
 
 /** 外から来たルールを整える（不正な値は既定に） */
 export function normRules(r: Partial<Rules> | undefined | null): Rules {

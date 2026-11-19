@@ -82,6 +82,29 @@ describe('オーバーレイ版の試作タイル', () => {
   });
 });
 
+describe('最後の1枚', () => {
+  it('既定：最後の1枚も量のマスでしか排除できない（ルールで「どこでも手放せる」に戻せる）', () => {
+    const s = game();
+    const p = s.players[0];
+    stack(s, 'WANT'); p.discard = []; // 欲しい（↑）だけ：物欲のマスへ出てしまう
+    draw(s); stop(s);
+    expect(here(s).kind).toBe('buy');
+    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [p.placed[0].id] })).toThrow();
+    const t = game();
+    const q = t.players[0];
+    stack(t, 'DOWN'); q.discard = []; // 片付けたい（↓）だけ：(0,-1) の量1で排除できる
+    draw(t); stop(t);
+    applyOverlay(t, 0, { type: 'resolve', buy: [], remove: [q.placed[0].id] });
+    expect(q.finished).toBe(true);
+    const u = game({ lastCard: true });
+    const r = u.players[0];
+    stack(u, 'WANT'); r.discard = [];
+    draw(u); stop(u);
+    applyOverlay(u, 0, { type: 'resolve', buy: [], remove: [r.placed[0].id] });
+    expect(r.finished).toBe(true);
+  });
+});
+
 describe('盤に置くお気に入り（favBoard）', () => {
   it('大掃除の日：置いたマスで止まると何枚でも排除できる．ほかのマスでは効かない', () => {
     const s = game({ favBoard: true });

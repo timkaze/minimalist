@@ -164,12 +164,12 @@ const RULE_OPTS: { key: keyof Rules; label: string; choices: [string, string][] 
   { key: 'board', label: '盤', choices: Object.values(OBOARDS).map(b => [b.name, b.label] as [string, string]) },
   { key: 'cols', label: '列の増減（盤の印刷）', choices: [['v06', '衝動は額＋・量−，理性は量＋・額−'], ['bonus', '上乗せだけ（衝動は額＋，理性は量＋）'], ['none', 'なし']] },
   { key: 'needs', label: '取得・排除の条件', choices: [['true', 'あり（衝動nで取得／理性nで排除）'], ['false', 'なし']] },
-  { key: 'lastCard', label: '最後の1枚', choices: [['true', 'どこで止まっても手放せる'], ['false', '量のマスでしか手放せない']] },
+  { key: 'lastCard', label: '最後の1枚', choices: [['false', '量のマスでしか手放せない（重さ・条件もふつうどおり）'], ['true', 'どこで止まっても手放せる']] },
   { key: 'refill', label: '袋が尽きたら', choices: [['true', '捨て山を戻して引き続けられる'], ['false', '止めるしかない']] },
 ];
 
 function savedRules(): Rules {
-  try { return normRules(JSON.parse(store.get('rules2') ?? '{}')); } catch { return { ...DEFAULT_RULES }; }
+  try { return normRules(JSON.parse(store.get('rules3') ?? '{}')); } catch { return { ...DEFAULT_RULES }; }
 }
 /** 開始画面で今選んでいるルール（画面に無ければ保存してあるもの） */
 function readRulesDraft(): Rules {
@@ -211,10 +211,10 @@ function bindOptions() {
     app.querySelector<HTMLElement>('#startbagBody')!.innerHTML = startingBag(readRulesDraft().hesCount).map(([k, n]) => infoHTML(k, '', n)).join('');
   };
   setSel.onchange = () => { store.set('set', setSel.value); info(); };
-  app.querySelectorAll<HTMLSelectElement>('select[data-rule]').forEach(x => x.onchange = () => { store.set('rules2', JSON.stringify(readRulesDraft())); info(); });
+  app.querySelectorAll<HTMLSelectElement>('select[data-rule]').forEach(x => x.onchange = () => { store.set('rules3', JSON.stringify(readRulesDraft())); info(); });
   app.querySelectorAll<HTMLInputElement>('#custom input').forEach(x => x.onchange = () =>
     store.set('tiles', [...app.querySelectorAll<HTMLInputElement>('#custom input:checked')].map(y => y.value).join(',')));
-  app.querySelector<HTMLButtonElement>('#resetRules')!.onclick = () => { store.set('rules2', JSON.stringify(DEFAULT_RULES)); render(); };
+  app.querySelector<HTMLButtonElement>('#resetRules')!.onclick = () => { store.set('rules3', JSON.stringify(DEFAULT_RULES)); render(); };
   info();
 }
 
@@ -224,7 +224,7 @@ function readOptions(): { rules: Rules; set: string; tiles?: OKind[]; market: OK
   const tiles = [...app.querySelectorAll<HTMLInputElement>('#custom input:checked')].map(x => x.value as OKind);
   let market: OKind[];
   try { market = marketFromChoice(set === 'custom' ? tiles : set); } catch (e) { alert((e as Error).message); return null; }
-  store.set('rules2', JSON.stringify(rules));
+  store.set('rules3', JSON.stringify(rules));
   store.set('set', set);
   if (set === 'custom') store.set('tiles', tiles.join(','));
   return { rules, set, tiles: set === 'custom' ? tiles : undefined, market };
@@ -244,6 +244,7 @@ function rulesHTML() {
     <li><b>決心チップ</b>（◆）：1枚も排除できなかった手番の終わりに1枚もらう（3枚まで）．量のマスで排除するとき，1枚で「重さ1の肩代わり」か「理性の条件1段階の免除」に使える．足りない分だけ自動で使う</li>
     <li>高いものは<b>衝動の列でないと取得できない</b>，思い入れのあるものは<b>理性の列でないと排除できない</b>（タイルの説明に書いてあります）</li>
     <li>★お気に入りは取得したら自分の前に置き，効果がずっと続きます（袋に入らない．各1枚）</li>
+    ${R().lastCard ? '' : '<li><b>最後の1枚も，量のマスで排除</b>しないと達成になりません（重さ・条件もふつうどおり．決心チップは使えます）．↑や→のタイルが最後に残ると捨てに行けないので，終わり方を考えて残すタイルを選びます</li>'}
     <li>タイルが0枚になったら達成．そのラウンドの最後まで遊び，排除した枚数が多い人の勝ち（同じならお気に入りのコストの合計）</li>
   </ul>`;
 }
