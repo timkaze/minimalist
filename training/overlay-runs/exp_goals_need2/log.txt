@@ -1,0 +1,12 @@
+== goals_need2: OV_TILES= RULES={"goals":"need2"} SET=all
+特徴量 114，装置 cuda，出力 /home/tomida/git/minimalist-exp3/training/overlay-runs/fit_exp_goals_need2
+[1] データ 156921行（作成 149秒，終わらなかった人 53.7%）学習 2秒  検証 CE 0.536  手番数の誤差 2.66（平均で当てた場合 12.08）
+[2] データ 314407行（作成 422秒，終わらなかった人 31.6%）学習 3秒  検証 CE 1.162  手番数の誤差 5.25（平均で当てた場合 14.80）
+[3] データ 422664行（作成 248秒，終わらなかった人 6.1%）学習 3秒  検証 CE 1.401  手番数の誤差 5.23（平均で当てた場合 15.77）
+[4] データ 518268行（作成 199秒，終わらなかった人 2.0%）学習 5秒  検証 CE 1.497  手番数の誤差 4.85（平均で当てた場合 15.47）
+[5] データ 609922行（作成 183秒，終わらなかった人 1.7%）学習 5秒  検証 CE 1.559  手番数の誤差 4.59（平均で当てた場合 14.83）
+保存 /home/tomida/git/minimalist-exp3/training/overlay-runs/exp_goals_need2/value_last.json（計 1219秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/minimalist-exp3/training/overlay-runs/fit_exp_goals_need2
+[refit] データ 609922行  検証 CE 1.556  手番数の誤差 4.50（平均で当てた場合 14.83）
+保存 /home/tomida/git/minimalist-exp3/training/overlay-runs/exp_goals_need2/value.json
+== done goals_need2

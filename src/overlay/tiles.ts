@@ -154,7 +154,8 @@ export const TILE_SETS: TileSet[] = [
   { id: 'swing', label: '行ったり来たり', note: '同じ道を往復して重ねる．お気に入りはコンパス・大掃除の日',
     tiles: ['DOWN', 'SWING', 'FREE', 'MEMO', 'UP2', 'RUSH', 'DOWN2', 'TREAT', 'CLEAN', 'COMPASS', 'BIGDAY'] },
   { id: 'all', label: 'すべて', note: `全${MARKET.length}種類`, tiles: [...MARKET] },
-  { id: 'calm', label: 'すべて＋理性のお気に入り（試作）', note: '理性の列でしか取得できないお気に入り3種（ゆとり・手放す覚悟・家計簿）を足す', tiles: [...MARKET, ...CALM_PERMS] },
+  // ゆとりはセットに入れていない：ためらいを無視する効果は，弱めても持った人の勝率倍率が 2.2〜2.4 になった（作り直しが要る）
+  { id: 'calm', label: 'すべて＋理性のお気に入り（試作）', note: '理性の列でしか取得できないお気に入り2種（家計簿・手放す覚悟）を足す', tiles: [...MARKET, 'KAKEIBO', 'KOKOROE'] },
   { id: 'random', label: 'ランダム', note: '片付けたい＋ふつうのタイル7種＋お気に入り2種をくじで', tiles: [] },
 ];
 

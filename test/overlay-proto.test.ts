@@ -89,12 +89,13 @@ describe('理性のお気に入り（試作）とお気に入りの在庫', () =
     for (let i = 0; i < 3; i++) draw(s);
     expect(here(s)).toEqual({ kind: 'buy', amount: 4 });
     stop(s);
-    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: ['YUTORI'], remove: [] })).toThrow(/理性1以上/);
+    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: ['KAKEIBO'], remove: [] })).toThrow(/理性1以上/);
     const t = game({}, marketFromChoice('calm'));
     stack(t, 'DOUBT', 'TREAT'); // 理性1の列でご褒美（額4）を置いてその上で止まる
     draw(t); draw(t); stop(t);
-    applyOverlay(t, 0, { type: 'resolve', buy: ['YUTORI'], remove: [] });
-    expect(t.players[0].perms).toEqual(['YUTORI']);
+    applyOverlay(t, 0, { type: 'resolve', buy: ['KAKEIBO'], remove: [] });
+    expect(t.players[0].perms).toEqual(['KAKEIBO']);
+    expect(marketFromChoice('calm')).not.toContain('YUTORI'); // ゆとりは強すぎたのでセットから外してある
   });
 
   it('ゆとり：その手番の1枚目のためらいでは止まらない（2枚目で止まる）', () => {
