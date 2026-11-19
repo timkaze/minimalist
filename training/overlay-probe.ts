@@ -5,7 +5,7 @@
 //   ・買わない：その種類を買わない．勝率が 50% から大きく下がるほど，そのタイルは勝つのに欠かせない
 // 「無理に買う」がどれも 55% を超えないことを，バランスの結論を出す前の条件にする（改善方針の段階2）
 
-import { BUYABLE, OKind, PERMS } from '../src/overlay/tiles';
+import { ALL_PERMS as PERMS, BUYABLE, OKind } from '../src/overlay/tiles';
 import { Job, f1, marketOf, runJobs, sePct, tileName, winShare } from './overlay-arena';
 import { DEFAULT_MODEL } from './overlay-search-node';
 

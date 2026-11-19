@@ -5,7 +5,7 @@ import './ui.css';
 import { ARROW, Dir, Fx, MARKET, OKind, TILES, TILE_SETS, UNLIMITED_KINDS, carryText, dirsText, fxText, marketFromChoice, startingBag, tileDirs, weightOf } from './tiles';
 import { OMAX_SEATS, ORoomInfo, OServerMsg } from './protocol';
 import {
-  DEFAULT_RULES, OAction, OBOARDS, OPlayer, OState, Pos, Rules, Tile, X_MAX, X_MIN, applyOverlay, canBuyAt, canDraw, canDropAt, canMove,
+  DEFAULT_RULES, GOALS, OAction, OBOARDS, OPlayer, OState, Pos, Rules, Tile, X_MAX, X_MIN, applyOverlay, goalNeed, canBuyAt, canDraw, canDropAt, canMove,
   chipNeed, dirsOf, discardLimit, envOf, favCost, hereFx, isDeep, isLastCard, newOverlayGame, normRules, ownedTiles, printedFx, removeLoad, samePos,
   stackAt, step, tileFx, topTile, yMax, yMin,
 } from './engine';
@@ -108,7 +108,8 @@ function tileHTML(kind: OKind, o: { fx?: Fx; cls?: string; attr?: string; seq?: 
   const carry = d.boost && rules.carry ? `<span class="c-carry" title="盤にあるあいだ，止まったマスの量 +${d.boost}">運ぶ+${d.boost}</span>` : '';
   const tl = o.seq ? `<span class="seq">${o.seq}</span>` : o.cost && d.cost !== null ? `<span class="c-cost" title="取得コスト">${d.cost}</span>` : '';
   const tr = (o.stack ?? 0) > 1 ? `<span class="stk">${o.stack}枚</span>` : (o.count ?? 0) > 1 ? `<span class="cnt">×${o.count}</span>`
-    : o.cost && rules.needs && d.buyNeed ? `<span class="c-imp" title="衝動${d.buyNeed}以上の列で取得">衝${d.buyNeed}</span>` : '';
+    : o.cost && rules.needs && d.buyNeed ? `<span class="c-imp" title="衝動${d.buyNeed}以上の列で取得">衝${d.buyNeed}</span>`
+    : o.cost && rules.needs && d.calmNeed ? `<span class="c-imp calm" title="理性${d.calmNeed}以上の列で取得">理${d.calmNeed}</span>` : '';
   const bl = d.perm ? '' : `<span class="c-w" title="捨てる重さ">重${weightOf(kind, rules)}</span>`;
   const br = rules.needs && d.dropNeed ? `<span class="c-calm" title="理性${d.dropNeed}以上の列で排除">理${d.dropNeed}</span>` : '';
   return `<div class="tile k-${d.perm ? 'perm' : fx.kind} ${dirs.length || d.perm ? '' : 'stay'} ${o.cls ?? ''}" ${o.attr ?? ''} title="${esc(tileTitle(kind))}">
@@ -130,6 +131,7 @@ function infoHTML(kind: OKind, extra = '', count = 0): string {
     d.cost !== null ? `<span class="badge bc">コスト${d.cost}</span>` : '<span class="badge">初期</span>',
     !d.perm ? `<span class="badge w">重さ${weightOf(kind, rules)}</span>` : '',
     rules.needs && d.buyNeed ? `<span class="badge imp">衝動${d.buyNeed}で取得</span>` : '',
+    rules.needs && d.calmNeed ? `<span class="badge calm">理性${d.calmNeed}で取得</span>` : '',
     rules.needs && d.dropNeed ? `<span class="badge calm">理性${d.dropNeed}で排除</span>` : '',
     d.boost && rules.carry ? `<span class="badge carry">量 +${d.boost} を運ぶ</span>` : '',
   ].join('');
@@ -157,6 +159,8 @@ const RULE_OPTS: { key: keyof Rules; label: string; choices: [string, string][] 
   { key: 'weights', label: '捨てる重さ', choices: [['heavy', '重い（欲しい2・↑へ行くタイル2・ガラクタ2）'], ['light', '軽い（ガラクタ2，ほかは1）']] },
   { key: 'chips', label: '決心チップ', choices: [['true', 'あり（排除できなかった手番に1枚．重さ1か条件1段階に使える）'], ['false', 'なし']] },
   { key: 'junk', label: 'ガラクタの矢印', choices: [['right', '→だけ'], ['four', '4方向']] },
+  { key: 'goals', label: '目標（3枚めくる）', choices: [['off', 'なし'], ['bonus', 'あり（達成すると決心チップ1枚）'], ['need1', 'あり＋1つ達成するまで最後の1枚は手放せない'], ['need2', 'あり＋2つ達成するまで最後の1枚は手放せない']] },
+  { key: 'favOne', label: 'お気に入りの在庫', choices: [['false', '人数ぶん（2枚以上）'], ['true', '各1枚（取り合い）']] },
   { key: 'carry', label: '量を運ぶタイル', choices: [['true', 'あり（「運ぶ +n」のタイルは，盤にあるあいだ止まったマスの量 +n）'], ['false', 'なし（v0.4 まで）']] },
   { key: 'bigBag', label: '初期の袋', choices: [['false', 'ふつう（欲しい2・迷い1・ガラクタ1＋ためらい）'], ['true', '多め（欲しい3・迷い2・ガラクタ2＋ためらい）']] },
   { key: 'special', label: '特別なマス', choices: [['true', 'あり（捨欲の中の額マス・福袋・運試し）'], ['false', 'なし']] },
@@ -245,8 +249,19 @@ function rulesHTML() {
     <li>高いものは<b>衝動の列でないと取得できない</b>，思い入れのあるものは<b>理性の列でないと排除できない</b>（タイルの説明に書いてあります）</li>
     <li>★お気に入りは取得したら自分の前に置き，効果がずっと続きます（袋に入らない．各1枚）</li>
     ${R().lastCard ? '' : '<li><b>最後の1枚も，量のマスで排除</b>しないと達成になりません（重さ・条件もふつうどおり．決心チップは使えます）．↑や→のタイルが最後に残ると捨てに行けないので，終わり方を考えて残すタイルを選びます</li>'}
+    ${R().goals === 'off' ? '' : `<li><b>目標</b>：はじめに目標を3枚めくります（全員共通）．止まり方が条件を満たしたら達成で，決心チップを1枚もらいます（1人1回ずつ）${goalNeed(R()) ? `．<b>${goalNeed(R())}つ達成するまで，最後の1枚は手放せません</b>` : ''}</li>`}
     <li>タイルが0枚になったら達成．そのラウンドの最後まで遊び，排除した枚数が多い人の勝ち（同じならお気に入りのコストの合計）</li>
   </ul>`;
+}
+
+/** 目標の帯：この試合の目標と，だれが達成したか */
+function goalsHTML(st: OState): string {
+  if (!st.goals?.length) return '';
+  const need = goalNeed(st.rules);
+  return `<div class="goalsbar"><span class="gl">目標${need ? `<small>（${need}つ達成するまで最後の1枚は手放せない）</small>` : ''}</span>${st.goals.map(k => {
+    const who = st.players.map((q, i) => (q.goals?.includes(k) ? `<span class="dot p${i}" title="${esc(q.name)}"></span>` : '')).join('');
+    return `<div class="goal ${me >= 0 && st.players[me].goals?.includes(k) ? 'done' : ''}" title="達成すると決心チップ1枚"><b>${GOALS[k].name}</b><small>${GOALS[k].text}</small><span class="gw">${who}</span></div>`;
+  }).join('')}</div>`;
 }
 
 // ---- 待合室 ----
@@ -466,6 +481,7 @@ function render() {
       <span class="dot p${i}"></span><b>${esc(q.name)}</b>${i === me ? '<em>あなた</em>' : ''}${q.finished ? ' ✓' : ''}${st.winners.includes(i) ? ' 🏆' : ''}
       <small class="tn">${st.phase === 'over' ? `${st.round}回手番` : i === st.current ? `${st.round}回目の手番中` : `手番${st.round - 1 + (i < st.current ? 1 : 0)}回済`}</small>
       <small>持ち物${ownedTiles(q).length}・排除${q.removed}${st.rules.chips ? `・決心<span class="cg">${'◆'.repeat(q.chips ?? 0) || '0'}</span>` : ''}${q.perms.length ? `・★${q.perms.map(k => TILES[k].name).join('・')}` : ''}</small></div>`).join('')}</div>
+  ${goalsHTML(st)}
   <main class="game ${mine ? 'myturn' : ''}">
     <section class="left">
       <div class="who"><span class="dot p${st.current}"></span>${st.phase === 'over' ? '最後の盤' : mine ? 'あなたの盤' : `${esc(p.name)}の盤`}　<span class="bagline">袋 <b>${p.bag.length}</b>　捨て山 <b>${p.discard.length}</b>　置いた <b>${p.placed.length}</b></span></div>
@@ -544,9 +560,10 @@ function controlsHTML(): string {
         const dn = discardLimit(p, here.amount, isDeep(p.pos.y, st.board));
         const discSel = p.discard.filter(c => sel.remove.has(c.id));
         const have = st.rules.chips ? p.chips ?? 0 : 0;
-        const need = chipNeed(flowSel, discSel, p.pos.x, here.amount, st.rules, big);
+        const noCond = p.perms.includes('KOKOROE');
+        const need = chipNeed(flowSel, discSel, p.pos.x, here.amount, st.rules, big, noCond);
         const chipLine = st.rules.chips ? `<p class="chipline">決心チップ <b>${'◆'.repeat(have) || 'なし'}</b>${have ? `　1枚で「重さ1の肩代わり」か「理性の条件1段階の免除」．<span class="meter ${need > have ? 'over' : ''}">使用 ${need} / ${have}</span>` : '（1枚も排除できなかった手番の終わりに1枚もらえます）'}</p>` : '';
-        const pick = (c: Tile) => (canDropAt(c.kind, p.pos.x, st.rules) || have > 0) && sel.roomba !== c.id
+        const pick = (c: Tile) => (canDropAt(c.kind, p.pos.x, st.rules, noCond) || have > 0) && sel.roomba !== c.id
           ? tileHTML(c.kind, { attr: `data-rm="${c.id}"`, cls: sel.remove.has(c.id) ? 'on' : '' }) : tileHTML(c.kind, { cls: 'no' });
         return `${p.roll != null ? `<p><b class="cg">運試し</b>：袋に当たりチップを混ぜて，当たりが出るまでに <b>${p.roll}</b> 枚を表にした → <b class="cr">量 ${p.roll}</b></p><div class="chips rolled">${(p.rollKinds ?? []).map(k => tileHTML(k, { cls: 'chip' })).join('')}<span class="hit">当たり</span></div><p class="muted">表にしたタイルは排除の対象になりません（捨て山へ送りました）</p>` : ''}<p><b class="cr">量 ${here.amount}</b>：この手番に置いたタイルから排除するものを選んでください　<span class="meter ${load > here.amount ? 'over' : ''}">${big ? '★大掃除の日：何枚でも' : `重さ ${load} / ${here.amount}`}</span></p>
           ${chipLine}<div class="chips pickable">${p.placed.map(pick).join('')}</div>

@@ -22,7 +22,8 @@ export type OKind =
   | 'CALM' | 'DOWN2' | 'LIGHT' | 'DRAG' | 'MEMO' | 'FREE'  // 量を残す・特殊
   | 'REST' | 'TREAT' | 'CLEAN'                             // 動かない（置いたタイルの上に立つ）
   | 'ROOMBA' | 'BIGDAY' | 'BAG' | 'COMPASS' | 'KODAWARI'   // お気に入り（永続．袋に入らない）
-  | 'MOMENTUM' | 'BACK' | 'STACK' | 'SHELF';                // 試作（EXPERIMENTAL．セットに入れたときだけ市場に並ぶ）
+  | 'MOMENTUM' | 'BACK' | 'STACK' | 'SHELF'                 // 試作（EXPERIMENTAL．セットに入れたときだけ市場に並ぶ）
+  | 'YUTORI' | 'KOKOROE' | 'KAKEIBO';                       // 試作：理性のお気に入り（理性の列でしか取得できない）
 
 export interface TileDef {
   kind: OKind;
@@ -43,6 +44,8 @@ export interface TileDef {
   perm?: boolean;
   /** 取得するには衝動がこの値以上の列で止まる */
   buyNeed?: number;
+  /** 取得するには理性がこの値以上の列で止まる（理性のお気に入り） */
+  calmNeed?: number;
   /** 排除するには理性がこの値以上の列で止まる */
   dropNeed?: number;
   /** 量を運ぶ：盤にあるあいだ（置いた手番のあいだ），止まったマスの量をこの数だけ増やす（何枚でも重なる．ルール carry） */
@@ -97,6 +100,10 @@ export const TILES: Record<OKind, TileDef> = {
   MOMENTUM: t('MOMENTUM', '勢い', ['D'], NO_FX, 3, { boost: 1 }),
   BACK:     t('BACK', 'ひきかえす', [], buy(2), 3, { back: true, note: '1つ前に置いたタイルのマスへ戻る（そのタイルの効果を使える）．1枚目なら動かない' }),
   STACK:    t('STACK', '山積み', [], rem(0), 3, { stack: true, note: '量＝このマスにこの手番に重ねたタイルの枚数（これも数える）' }),
+  // 理性のお気に入り：理性の列は額が小さいので安い．効果は「落ち着いて続ける・手放す」寄り
+  YUTORI:   t('YUTORI', 'ゆとり', [], NO_FX, 3, { perm: true, weight: 0, calmNeed: 1, note: 'ためらいが出ても止まらない（→か←へ出て，そのまま続けられる）' }),
+  KOKOROE:  t('KOKOROE', '手放す覚悟', [], NO_FX, 2, { perm: true, weight: 0, calmNeed: 2, note: '排除の条件（理性nで排除）を無視できる' }),
+  KAKEIBO:  t('KAKEIBO', '家計簿', [], NO_FX, 2, { perm: true, weight: 0, calmNeed: 1, note: '排除できた手番でも，手番の終わりに決心チップを1枚もらう（上限は同じ）' }),
   SHELF:    t('SHELF', '収納棚', [], rem(2), 4, { stay: true, note: '手番の終わりに盤に残り（持ち物から外れる），そのマスがずっと量2になる．START・お気に入りのマス・棚のあるマスでは残らず捨て山へ．排除できない' }),
 };
 
@@ -105,7 +112,11 @@ export const isPerm = (k: OKind) => !!TILES[k].perm;
 export const UNLIMITED_KINDS: OKind[] = ['DOWN'];
 export const MARKET: OKind[] = ['DOWN', 'BR', 'BREATH', 'SWING', 'UP2', 'RUSH', 'CALM', 'DOWN2', 'LIGHT', 'DRAG', 'MEMO', 'FREE', 'REST', 'TREAT', 'CLEAN', ...PERMS];
 /** 試作のタイル（「すべて」のセットには入らない．自分で選ぶ・検証のときだけ並ぶ） */
-export const EXPERIMENTAL: OKind[] = ['MOMENTUM', 'BACK', 'STACK', 'SHELF'];
+/** 試作：理性のお気に入り */
+export const CALM_PERMS: OKind[] = ['YUTORI', 'KOKOROE', 'KAKEIBO'];
+/** お気に入りの全部（試作を含む） */
+export const ALL_PERMS: OKind[] = [...PERMS, ...CALM_PERMS];
+export const EXPERIMENTAL: OKind[] = ['MOMENTUM', 'BACK', 'STACK', 'SHELF', ...CALM_PERMS];
 /** 市場に並びうる種類の全部（並び順もこの順） */
 export const BUYABLE: OKind[] = [...MARKET, ...EXPERIMENTAL];
 /** 盤に置くお気に入り（ルール favBoard のとき，取得したら自分の盤の1マスに置く） */
@@ -141,6 +152,7 @@ export const TILE_SETS: TileSet[] = [
   { id: 'swing', label: '行ったり来たり', note: '同じ道を往復して重ねる．お気に入りはコンパス・大掃除の日',
     tiles: ['DOWN', 'SWING', 'FREE', 'MEMO', 'UP2', 'RUSH', 'DOWN2', 'TREAT', 'CLEAN', 'COMPASS', 'BIGDAY'] },
   { id: 'all', label: 'すべて', note: `全${MARKET.length}種類`, tiles: [...MARKET] },
+  { id: 'calm', label: 'すべて＋理性のお気に入り（試作）', note: '理性の列でしか取得できないお気に入り3種（ゆとり・手放す覚悟・家計簿）を足す', tiles: [...MARKET, ...CALM_PERMS] },
   { id: 'random', label: 'ランダム', note: '片付けたい＋ふつうのタイル7種＋お気に入り2種をくじで', tiles: [] },
 ];
 

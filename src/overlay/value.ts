@@ -2,8 +2,8 @@
 //   入力＝持ち物（袋・捨て山の種類ごとの枚数，お気に入り，決心チップ，排除した枚数）と市場の在庫
 //   出力＝あと t 手番（t = 1..BINS）の確率．小さな多層パーセプトロンで，重みは JSON（学習は training/overlay_fit.py）
 
-import { BUYABLE, FURN_KINDS, LIGHT_MAX, LIGHT_PER, OKind, PERMS, TILES, TileRules, weightOf } from './tiles';
-import { Furn, OPlayer, OState, Pos } from './engine';
+import { ALL_PERMS as PERMS, BUYABLE, FURN_KINDS, LIGHT_MAX, LIGHT_PER, OKind, TILES, TileRules, weightOf } from './tiles';
+import { Furn, GOAL_KINDS, OPlayer, OState, Pos, goalNeed } from './engine';
 
 /** 袋に入る種類（お気に入り以外） */
 export const BAG_KINDS: OKind[] = (Object.keys(TILES) as OKind[]).filter(k => !TILES[k].perm);
@@ -15,7 +15,9 @@ export const MIDX = Object.fromEntries((Object.keys(TILES) as OKind[]).map(k => 
 export const BINS = 40;
 /** 盤の様子の特徴量：盤に置いたお気に入り（種類ごとに 有無・x・y）＋盤に残った棚（START に近い順に3つまで 有無・x・y） */
 export const SHELF_SLOTS = 3;
-export const NEXT = FURN_KINDS.length * 3 + SHELF_SLOTS * 3;
+/** 目標の特徴量：種類ごとに「この試合の目標で，まだ達成していない」＋最後の1枚を排除するのにあといくつ要るか */
+export const NGOAL = GOAL_KINDS.length + 1;
+export const NEXT = FURN_KINDS.length * 3 + SHELF_SLOTS * 3 + NGOAL;
 export const NFEAT = 2 * NK + PERMS.length + 6 + NM + 2 + NEXT;
 export const FEAT_VERSION = 2;
 /** 特徴量の名前（重みを別の版へ引き継ぐとき，名前で対応づける） */
@@ -24,10 +26,16 @@ export const featNames = (): string[] => [
   'chips', 'removed', 'light', 'own', 'weight', 'bagn', ...BUYABLE.map(k => `stock:${k}`), 'gacha', 'players',
   ...FURN_KINDS.flatMap(k => [`furn:${k}`, `furn:${k}:x`, `furn:${k}:y`]),
   ...Array.from({ length: SHELF_SLOTS }, (_, i) => [`shelf${i}`, `shelf${i}:x`, `shelf${i}:y`]).flat(),
+  ...GOAL_KINDS.map(k => `goal:${k}`), 'goalNeed',
 ];
 
-/** 盤の様子（お気に入りの置き場所と棚）を特徴量の並びにする */
-export function boardExt(furn: Furn[], shelves: Pos[]): number[] {
+/** 目標の種類のビット */
+export const GOAL_BIT = Object.fromEntries(GOAL_KINDS.map((k, i) => [k, 1 << i])) as Record<(typeof GOAL_KINDS)[number], number>;
+export const goalMask = (ks: readonly (typeof GOAL_KINDS)[number][] | undefined) => (ks ?? []).reduce((m, k) => m | GOAL_BIT[k], 0);
+export const popcount = (m: number) => { let n = 0; for (; m; m &= m - 1) n++; return n; };
+
+/** 盤の様子（お気に入りの置き場所と棚）と目標（open：まだ達成していない目標のビット，needLeft：あといくつ要るか）を特徴量の並びにする */
+export function boardExt(furn: Furn[], shelves: Pos[], open = 0, needLeft = 0): number[] {
   const v = new Array(NEXT).fill(0);
   FURN_KINDS.forEach((k, i) => {
     const f = furn.find(x => x.kind === k);
@@ -38,6 +46,9 @@ export function boardExt(furn: Furn[], shelves: Pos[]): number[] {
     const o = FURN_KINDS.length * 3 + i * 3;
     v[o] = 1; v[o + 1] = p.x / 3; v[o + 2] = p.y / 4;
   });
+  const g = FURN_KINDS.length * 3 + SHELF_SLOTS * 3;
+  for (let i = 0; i < GOAL_KINDS.length; i++) v[g + i] = (open >> i) & 1;
+  v[g + GOAL_KINDS.length] = needLeft / 2;
   return v;
 }
 const NO_EXT: number[] = new Array(NEXT).fill(0);
@@ -84,7 +95,8 @@ export function featOfPlayer(s: OState, p: OPlayer, x: Float64Array = new Float6
   countsOf(p.placed, disc);
   if (!p.bag.length) { bag = disc; disc = new Array(NK).fill(0); }
   fillFeat(x, bag, disc, permMaskOf(p.perms), s.rules.chips ? p.chips ?? 0 : 0, p.removed, stockOf(s), s.gacha.length, s.players.length, kindWeights(s.rules),
-    boardExt(s.rules.favBoard ? p.furn ?? [] : [], (p.fixed ?? []).map(f => f.pos)));
+    boardExt(s.rules.favBoard ? p.furn ?? [] : [], (p.fixed ?? []).map(f => f.pos),
+      goalMask(s.goals) & ~goalMask(p.goals), Math.max(0, goalNeed(s.rules) - (p.goals?.length ?? 0))));
   return x;
 }
 

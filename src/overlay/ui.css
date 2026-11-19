@@ -32,6 +32,13 @@ h3 { margin: 18px 0 8px; font-size: 13px; letter-spacing: .08em; color: #c8cede;
 .logo span { font-weight: 500; font-size: .6em; color: var(--gold); letter-spacing: .12em; margin-left: .3em; }
 .logo.sm span { font-size: .8em; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: var(--muted); vertical-align: baseline; }
+.goalsbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; padding: 6px 16px; }
+.goalsbar .gl { align-self: center; font-weight: 700; color: var(--gold); }
+.goalsbar .gl small { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
+.goal { display: flex; flex-direction: column; gap: 1px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff08; min-width: 150px; }
+.goal.done { border-color: var(--gold); background: #f2c75a1a; }
+.goal small { color: var(--muted); font-size: 11px; }
+.goal .gw { min-height: 10px; }
 .dot.p0 { background: #5aa2ff; } .dot.p1 { background: #ff7468; } .dot.p2 { background: #58c98c; } .dot.p3 { background: #f5a742; } .dot.p4 { background: #c38bff; } .dot.p5 { background: #5fd6d6; }
 
 /* ---- タイル ---- */
@@ -61,6 +68,7 @@ h3 { margin: 18px 0 8px; font-size: 13px; letter-spacing: .08em; color: #c8cede;
 .tile .c-cost, .tile .c-imp, .tile .c-w, .tile .c-calm { position: absolute; font-size: .5em; font-weight: 800; line-height: 1; padding: .16em .3em; border-radius: .5em; letter-spacing: -.03em; }
 .tile .c-cost { left: .2em; top: .2em; min-width: 1.5em; height: 1.5em; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #2a1f05; background: radial-gradient(circle at 35% 30%, #fff1b8, #f0b030); box-shadow: 0 .06em 0 #8a6414; }
 .tile .c-imp { right: .2em; top: .22em; color: #fff; background: #d98312; }
+.tile .c-imp.calm { background: #2f8f58; }
 .tile .c-w { left: .2em; bottom: .28em; color: #fff; background: #7d5a50; }
 .tile .c-carry { font-size: .36em; font-weight: 800; line-height: 1; padding: .14em .4em; margin-top: .1em; border-radius: .6em; color: #fff; background: #c93a2e; letter-spacing: -.03em; white-space: nowrap; }
 .tile .c-calm { right: .2em; bottom: .28em; color: #fff; background: #2f8f58; }

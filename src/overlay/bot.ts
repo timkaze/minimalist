@@ -4,7 +4,7 @@
 import { Dir, OKind, TILES, isPerm, weightOf } from './tiles';
 import {
   Env, OAction, OPlayer, OState, Tile, Walk, applyOverlay, canBuyAt, canDraw, canDropAt, chipNeed, dirsOf, discardLimit, effectAt, envOf, hereFx,
-  hasGlobal, isDeep, isLastCard, leaveTile, ownedTiles, putTile,
+  goalNeed, hasGlobal, isDeep, isLastCard, leaveTile, ownedTiles, putTile,
 } from './engine';
 
 export interface OGenome {
@@ -84,17 +84,17 @@ function trashScore(c: Ctx, t: Tile): number {
 export function planRemove(c: Ctx, flow: Tile[], amount: number, deep: boolean, xcol: number): { remove: number[]; value: number } {
   const owned = ownedTiles(c.p);
   const rules = c.s.rules;
-  const big = hasGlobal(c.p.perms, 'BIGDAY', rules);
+  const big = hasGlobal(c.p.perms, 'BIGDAY', rules), noCond = c.p.perms.includes('KOKOROE');
   // 決心チップは，捨てたいタイル（初期タイル・型に無いタイル）にだけ使う
   const chips = rules.chips ? c.p.chips ?? 0 : 0;
-  const cand = flow.filter(t => !TILES[t.kind].stay && (canDropAt(t.kind, xcol, rules) || (chips > 0 && trashScore(c, t) >= 5))).sort((a, b) => trashScore(c, b) - trashScore(c, a));
+  const cand = flow.filter(t => !TILES[t.kind].stay && (canDropAt(t.kind, xcol, rules, noCond) || (chips > 0 && trashScore(c, t) >= 5))).sort((a, b) => trashScore(c, b) - trashScore(c, a));
   const chosen: Tile[] = [];
   for (const t of cand) {
-    const need = chipNeed([...chosen, t], [], xcol, amount, rules, big);
+    const need = chipNeed([...chosen, t], [], xcol, amount, rules, big, noCond);
     if (need === 0 || (need <= chips && trashScore(c, t) >= 5)) chosen.push(t);
   }
   const dn = discardLimit(c.p, amount, deep);
-  const ds0 = c.p.discard.filter(t => canDropAt(t.kind, xcol, rules)).length;
+  const ds0 = c.p.discard.filter(t => canDropAt(t.kind, xcol, rules, noCond)).length;
   // 全部片付けられるなら全部（勝ち）．そうでなければ，型のタイルは残りが少なくなるまで取っておく
   const wipe = chosen.length + Math.min(dn, ds0) >= owned.length;
   const keepCore = !wipe && owned.length - chosen.length > 4;
@@ -103,7 +103,7 @@ export function planRemove(c: Ctx, flow: Tile[], amount: number, deep: boolean, 
   if (keepCore && picked.length === chosen.length && picked.every(t => trashScore(c, t) < 5)) picked = owned.some(t => TILES[t.kind].cost === null) ? [] : picked.slice(0, 1);
   const remove = picked.map(t => t.id);
   let value = picked.reduce((n, t) => n + 2 + Math.max(0, trashScore(c, t)) * 0.2, 0);
-  const ds = c.p.discard.filter(t => canDropAt(t.kind, xcol, rules) && !c.p.rollIds?.includes(t.id)).sort((a, b) => trashScore(c, b) - trashScore(c, a)).slice(0, dn);
+  const ds = c.p.discard.filter(t => canDropAt(t.kind, xcol, rules, noCond) && !c.p.rollIds?.includes(t.id)).sort((a, b) => trashScore(c, b) - trashScore(c, a)).slice(0, dn);
   for (const d of ds) { remove.push(d.id); value += 2; }
   if (remove.length >= owned.length) value += 30;
   return { remove, value };
@@ -175,11 +175,15 @@ export function chooseOverlayAction(s: OState, g: OGenome): OAction {
       return { type: 'branch', dir: r.dir ?? dirsOf(tile.kind, c.env)[0] };
     }
     case 'resolve': {
-      if (s.rules.lastCard && isLastCard(p)) return { type: 'resolve', buy: [], remove: [p.placed[0].id] };
+      // このボットは目標を狙わない．目標が足りないうちは最後の1枚を残す（ルールで排除できないため）
+      const short = goalNeed(s.rules) > (p.goals?.length ?? 0);
+      if (s.rules.lastCard && isLastCard(p)) return { type: 'resolve', buy: [], remove: short ? [] : [p.placed[0].id] };
       const pw = hereFx(s, p);
       const remove = pw.kind === 'remove' ? planRemove(c, p.placed, pw.amount, isDeep(p.pos.y, s.board), p.pos.x).remove : [];
       const buy = pw.kind === 'buy' ? planBuy(c, pw.amount, p.pos.x).buy : [];
-      return { type: 'resolve', buy, remove, roomba: planRoomba(c, p.placed, remove) };
+      let roomba = planRoomba(c, p.placed, remove);
+      if (short && !buy.length && remove.length + (roomba !== undefined ? 1 : 0) >= ownedTiles(p).length) { roomba = undefined; if (remove.length >= ownedTiles(p).length) remove.pop(); }
+      return { type: 'resolve', buy, remove, roomba };
     }
     case 'move': {
       if (!canDraw(p, s.rules) || (s.rules.lastCard && isLastCard(p))) return { type: 'stop' };

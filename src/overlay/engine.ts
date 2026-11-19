@@ -64,8 +64,15 @@ export interface Rules {
   bigBag: boolean;
   /** 量を運ぶ：「運ぶ +n」と書いたタイルは，盤にあるあいだ（置いた手番のあいだ），止まったマスの量を +n する．false なら効かない（v0.4 までの動き） */
   carry: boolean;
+  /** お気に入りは各1枚だけ（取り合い）．false なら人数ぶん（2枚以上） */
+  favOne: boolean;
+  /**
+   * 目標：開始時に目標を3枚めくる（全員共通）．手番の止まり方が条件を満たしたら達成（1人1回ずつ）．達成するたびに決心チップ1枚
+   *   off = なし／bonus = ごほうびだけ／need1・need2 = その数を達成するまで，最後の1枚は排除できない
+   */
+  goals: 'off' | 'bonus' | 'need1' | 'need2';
 }
-export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 2, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true };
+export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 2, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: false, goals: 'off' };
 
 /** 外から来たルールを整える（不正な値は既定に） */
 export function normRules(r: Partial<Rules> | undefined | null): Rules {
@@ -88,8 +95,31 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
     favBoard: bool(x.favBoard, d.favBoard),
     bigBag: bool(x.bigBag, d.bigBag),
     carry: bool(x.carry, d.carry),
+    favOne: bool(x.favOne, d.favOne),
+    goals: x.goals === 'bonus' || x.goals === 'need1' || x.goals === 'need2' || x.goals === 'off' ? x.goals : d.goals,
   };
 }
+
+// ---- 目標 ----
+
+export type GoalKind = 'DUMP3' | 'BIGBUY' | 'CALM3' | 'IMP3' | 'WALK5' | 'BOTTOM' | 'TOP' | 'JUNK' | 'LUCK' | 'PILE3';
+export const GOALS: Record<GoalKind, { name: string; text: string }> = {
+  DUMP3:  { name: 'まとめて手放す', text: '1手番に3枚以上排除する' },
+  BIGBUY: { name: '大きな買い物', text: '1手番に合計コスト5以上を取得する' },
+  CALM3:  { name: '理性の果て', text: '理性3の列で止まる' },
+  IMP3:   { name: '衝動の果て', text: '衝動3の列で止まる' },
+  WALK5:  { name: '遠出', text: '1手番に5枚以上置いて止まる' },
+  BOTTOM: { name: 'どん底', text: '一番下の行で止まる' },
+  TOP:    { name: 'てっぺん', text: '一番上の行で止まる' },
+  JUNK:   { name: 'ガラクタよさらば', text: 'ガラクタを排除する' },
+  LUCK:   { name: '運だめし', text: '福袋か運試しのマスで止まる' },
+  PILE3:  { name: '積み重ね', text: '3枚以上重なったマスで止まる' },
+};
+export const GOAL_KINDS = Object.keys(GOALS) as GoalKind[];
+/** 1試合でめくる目標の数 */
+export const GOAL_PICK = 3;
+/** 最後の1枚を排除するのに必要な達成数 */
+export const goalNeed = (rules: Rules) => (rules.goals === 'need1' ? 1 : rules.goals === 'need2' ? 2 : 0);
 
 // ---- 盤 ----
 
@@ -152,6 +182,26 @@ export function tileFx(kind: OKind, env: Pick<Env, 'rules' | 'removed'>): Fx {
   return TILES[kind].fx;
 }
 
+/** 止まり方（目標の判定に使う）：fx は止まったマスの効果の種類（運試しは引く前の種類），junk はガラクタを排除したか，buyCost は取得の合計コスト */
+export interface StopInfo { pos: Pos; placed: Placed[]; fx: Fx['kind']; nRemoved: number; junk: boolean; buyCost: number }
+/** その止まり方で満たす目標（すでに達成したものも含む） */
+export function goalMet(k: GoalKind, b: OBoard, i: StopInfo): boolean {
+  switch (k) {
+    case 'DUMP3': return i.nRemoved >= 3;
+    case 'BIGBUY': return i.buyCost >= 5;
+    case 'CALM3': return i.pos.x === X_MIN;
+    case 'IMP3': return i.pos.x === X_MAX;
+    case 'WALK5': return i.placed.length >= 5;
+    case 'BOTTOM': return i.pos.y === yMin(b);
+    case 'TOP': return i.pos.y === yMax(b);
+    case 'JUNK': return i.junk;
+    case 'LUCK': return i.fx === 'gacha' || i.fx === 'lucky';
+    case 'PILE3': return stackAt(i.placed, i.pos).length >= 3;
+  }
+}
+/** この止まり方で新しく達成する目標 */
+export const goalsHit = (active: GoalKind[], done: GoalKind[], b: OBoard, i: StopInfo): GoalKind[] => active.filter(k => !done.includes(k) && goalMet(k, b, i));
+
 /** そのマスの一番上のタイル */
 export const topTile = (placed: Placed[], pos: Pos): Placed | undefined => {
   for (let i = placed.length - 1; i >= 0; i--) if (samePos(placed[i].pos, pos)) return placed[i];
@@ -203,6 +253,7 @@ export function leaveTile(env: Env, w: Walk, kind: OKind, dir: Dir | null): bool
   w.pos = exitPos(env, w.placed, w.pos, kind, dir);
   if (kind !== 'HES') return false;
   w.hes++;
+  if (env.perms.includes('YUTORI')) return false; // ゆとり：ためらいで止まらない
   return env.rules.hes === 'first' || w.hes >= 2;
 }
 
@@ -236,6 +287,8 @@ export interface OPlayer {
   furn?: Furn[];
   /** 盤に残った棚（収納棚）．持ち物には数えない */
   fixed?: Placed[];
+  /** 達成した目標 */
+  goals?: GoalKind[];
   /** 運試しの結果（当たりチップが出るまでに袋から表にした枚数＝量）．運試しのマスで止まったときに決まる */
   roll?: number | null;
   /** 運試しで表にしたタイル（見せるだけ．排除の対象にはならず，捨て山へ送る） */
@@ -258,6 +311,8 @@ export interface OState {
   rules: Rules;
   /** 福袋の残り（全員で共有） */
   gacha: OKind[];
+  /** この試合の目標（ルール goals が off でなければ3枚） */
+  goals?: GoalKind[];
 }
 
 export type OAction =
@@ -278,7 +333,7 @@ export function newOverlayGame(
     players: [], market: {}, current: 0, round: 1, phase: 'play', turn: 'move', winners: [], log: [], rng: seed, nextId: 1,
     board: OBOARDS[rules.board], rules, gacha: GACHA_POOL.flatMap(([k, n]) => Array.from({ length: n }, () => k)),
   };
-  for (const k of opts.market ?? MARKET) s.market[k] = UNLIMITED_KINDS.includes(k) ? UNLIMITED : Math.max(2, setup.length);
+  for (const k of opts.market ?? MARKET) s.market[k] = UNLIMITED_KINDS.includes(k) ? UNLIMITED : rules.favOne && isPerm(k) ? 1 : Math.max(2, setup.length);
   for (const p of setup) {
     const bag: Tile[] = [];
     for (const [k, n] of startingBag(rules.hesCount, rules.bigBag)) for (let i = 0; i < n; i++) bag.push({ id: s.nextId++, kind: k });
@@ -287,6 +342,11 @@ export function newOverlayGame(
     const hi = bag.findIndex(t => t.kind === 'HES');
     if (hi >= 0) bag.unshift(bag.splice(hi, 1)[0]);
     s.players.push({ name: p.name, isBot: !!p.isBot, botType: p.botType, bag, discard: [], placed: [], pos: { x: 0, y: 0 }, hes: 0, perms: [], traces: [], removed: 0, bought: 0, finished: false, chips: 0 });
+  }
+  if (rules.goals !== 'off') {
+    const gs = [...GOAL_KINDS];
+    shuffle(gs, s);
+    s.goals = gs.slice(0, GOAL_PICK);
   }
   s.log.push('ゲーム開始');
   return s;
@@ -322,8 +382,9 @@ function stopHere(s: OState, p: OPlayer): void {
   s.log.push(`${p.name}：運試し → 袋から${k}枚表にして当たり（量${k}）`);
 }
 
-export const canBuyAt = (k: OKind, x: number, rules: Rules) => !rules.needs || (TILES[k].buyNeed ?? 0) <= Math.max(0, x);
-export const canDropAt = (k: OKind, x: number, rules: Rules) => !TILES[k].stay && (!rules.needs || (TILES[k].dropNeed ?? 0) <= Math.max(0, -x));
+export const canBuyAt = (k: OKind, x: number, rules: Rules) => !rules.needs || ((TILES[k].buyNeed ?? 0) <= Math.max(0, x) && (TILES[k].calmNeed ?? 0) <= Math.max(0, -x));
+/** noCond：手放す覚悟（排除の条件を無視） */
+export const canDropAt = (k: OKind, x: number, rules: Rules, noCond = false) => !TILES[k].stay && (noCond || !rules.needs || (TILES[k].dropNeed ?? 0) <= Math.max(0, -x));
 
 /** 排除の重さの合計（道連れ袋1枚につき，ほかの1枚の重さを0にできる．重いものから） */
 export function removeLoad(tiles: Tile[], rules: Rules): number {
@@ -336,10 +397,10 @@ export const MAX_CHIPS = 3;
 /**
  * その排除に必要な決心チップの枚数：量を超えた重さ（置いたタイルだけ．大掃除の日なら0）＋足りない理性の段数（タイルごと）
  */
-export function chipNeed(fromFlow: Tile[], fromDiscard: Tile[], x: number, amount: number, rules: Rules, bigday: boolean): number {
+export function chipNeed(fromFlow: Tile[], fromDiscard: Tile[], x: number, amount: number, rules: Rules, bigday: boolean, noCond = false): number {
   const over = bigday ? 0 : Math.max(0, removeLoad(fromFlow, rules) - amount);
   const reason = Math.max(0, -x);
-  const cond = rules.needs ? [...fromFlow, ...fromDiscard].reduce((n, c) => n + Math.max(0, (TILES[c.kind].dropNeed ?? 0) - reason), 0) : 0;
+  const cond = rules.needs && !noCond ? [...fromFlow, ...fromDiscard].reduce((n, c) => n + Math.max(0, (TILES[c.kind].dropNeed ?? 0) - reason), 0) : 0;
   return over + cond;
 }
 
@@ -396,7 +457,7 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
     const cost = TILES[k]?.cost;
     if (cost == null || s.market[k] === undefined) throw new ORuleError('市場にないタイルです');
     if (isPerm(k) && (p.perms.includes(k) || a.buy.filter(x => x === k).length > 1)) throw new ORuleError('同じお気に入りは1枚まで');
-    if (!canBuyAt(k, pos.x, s.rules)) throw new ORuleError(`${TILES[k].name}は衝動${TILES[k].buyNeed}以上の列でないと取得できません`);
+    if (!canBuyAt(k, pos.x, s.rules)) throw new ORuleError(TILES[k].calmNeed ? `${TILES[k].name}は理性${TILES[k].calmNeed}以上の列でないと取得できません` : `${TILES[k].name}は衝動${TILES[k].buyNeed}以上の列でないと取得できません`);
     total += cost;
     need[k] = (need[k] ?? 0) + 1;
   }
@@ -413,13 +474,14 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
   const deep = isDeep(pos.y, s.board);
   if (fromDiscard.length > (power.kind === 'remove' ? discardLimit(p, power.amount, deep) : 0)) throw new ORuleError('捨て山から排除できる枚数を超えています');
   let spend = 0;
+  const noCond = p.perms.includes('KOKOROE');
   const last = s.rules.lastCard && isLastCard(p) && fromFlow.length === 1 && !fromDiscard.length;
   if (!last) {
     if (power.kind !== 'remove' && ids.length) throw new ORuleError('量のマスでしか排除できません');
     const have = s.rules.chips ? p.chips ?? 0 : 0;
-    spend = chipNeed(fromFlow, fromDiscard, pos.x, power.amount, s.rules, hasGlobal(p.perms, 'BIGDAY', s.rules));
+    spend = chipNeed(fromFlow, fromDiscard, pos.x, power.amount, s.rules, hasGlobal(p.perms, 'BIGDAY', s.rules), noCond);
     if (spend > have) {
-      const hard = [...fromFlow, ...fromDiscard].find(c => !canDropAt(c.kind, pos.x, s.rules));
+      const hard = [...fromFlow, ...fromDiscard].find(c => !canDropAt(c.kind, pos.x, s.rules, noCond));
       if (hard && !have) throw new ORuleError(`${TILES[hard.kind].name}は理性${TILES[hard.kind].dropNeed}以上の列でないと排除できません`);
       throw new ORuleError(have ? `決心チップが足りません（必要 ${spend}・所持 ${have}）` : `量${power.amount}を超えています`);
     }
@@ -442,6 +504,23 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
     }
   }
 
+  const gone = new Set(a.roomba != null ? [...ids, a.roomba] : ids);
+  // 盤のルンバ：そのマスに最初に置いたタイルを吸い込む（この手番より前から置いてあるルンバだけ．棚は吸わない）
+  let eaten = false;
+  const rb = s.rules.favBoard ? furn.find(f => f.kind === 'ROOMBA') : undefined;
+  if (rb) {
+    const first = p.placed.find(c => samePos(c.pos, rb.pos));
+    if (first && !TILES[first.kind].stay && !gone.has(first.id)) { gone.add(first.id); eaten = true; }
+  }
+  // 目標：この止まり方で新しく達成するもの．必要な数に足りなければ，最後の1枚は排除できない
+  const goneTiles = [...p.placed, ...p.discard].filter(c => gone.has(c.id));
+  const hit = s.goals?.length ? goalsHit(s.goals, p.goals ?? [], s.board, {
+    pos, placed: p.placed, fx: p.roll != null ? 'lucky' : power.kind, nRemoved: gone.size, junk: goneTiles.some(c => c.kind === 'JUNK'), buyCost: total,
+  }) : [];
+  const leftAfter = ownedTiles(p).length - gone.size + a.buy.filter(k => !isPerm(k)).length + (power.kind === 'gacha' && s.gacha.length ? 1 : 0);
+  const short = goalNeed(s.rules) - (p.goals?.length ?? 0) - hit.length;
+  if (leftAfter === 0 && short > 0) throw new ORuleError(`目標をあと${short}つ達成するまで，最後の1枚は手放せません`);
+
   for (const k of a.buy) {
     if (!UNLIMITED_KINDS.includes(k)) s.market[k]!--;
     if (isPerm(k)) p.perms.push(k);
@@ -449,14 +528,6 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
     p.bought++;
   }
   furn.push(...newFurn);
-  const gone = new Set(a.roomba != null ? [...ids, a.roomba] : ids);
-  // 盤のルンバ：そのマスに最初に置いたタイルを吸い込む（この手番より前から置いてあるルンバだけ．棚は吸わない）
-  let eaten = false;
-  const rb = s.rules.favBoard ? furn.find(f => f.kind === 'ROOMBA' && !newFurn.includes(f)) : undefined;
-  if (rb) {
-    const first = p.placed.find(c => samePos(c.pos, rb.pos));
-    if (first && !TILES[first.kind].stay && !gone.has(first.id)) { gone.add(first.id); eaten = true; }
-  }
   (p.gone ??= []).push(...[...p.placed, ...p.discard].filter(c => gone.has(c.id)).map(c => ({ id: c.id, kind: c.kind })));
   p.placed = p.placed.filter(c => !gone.has(c.id));
   p.discard = p.discard.filter(c => !gone.has(c.id));
@@ -481,11 +552,17 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
   if (ids.length) parts.push(`${ids.length}枚排除`);
   if (a.buy.length) parts.push(`取得 ${a.buy.map(k => TILES[k].name).join('・')}`);
   if (a.roomba != null) parts.push('ルンバで1枚排除');
+  if (hit.length) {
+    (p.goals ??= []).push(...hit);
+    if (s.rules.chips) p.chips = Math.min(MAX_CHIPS, (p.chips ?? 0) + hit.length);
+    parts.push(`目標達成「${hit.map(k => GOALS[k].name).join('」「')}」${s.rules.chips ? '（決心チップ+' + hit.length + '）' : ''}`);
+  }
   if (eaten) parts.push('ルンバが1枚吸い込んだ');
   for (const f of newFurn) parts.push(`${TILES[f.kind].name}を(${f.pos.x},${f.pos.y})に置いた`);
   s.log.push(parts.join(' / '));
   // 決心チップ：この手番に1枚も排除できなかったらもらう
-  if (s.rules.chips && p.removed === removedBefore && ownedTiles(p).length && (p.chips ?? 0) < MAX_CHIPS) {
+  // 決心チップ：1枚も排除できなかった手番の終わりに1枚（家計簿があれば，排除できた手番でも）
+  if (s.rules.chips && (p.removed === removedBefore || p.perms.includes('KAKEIBO')) && ownedTiles(p).length && (p.chips ?? 0) < MAX_CHIPS) {
     p.chips = (p.chips ?? 0) + 1;
     s.log[s.log.length - 1] += ' / 決心チップ+1';
   }
@@ -497,6 +574,7 @@ function endTurn(s: OState, p: OPlayer): void {
   const furn = p.furn ?? [], fixed = (p.fixed ??= []);
   p.placed = p.placed.filter(c => {
     if (!TILES[c.kind].stay || !canPlaceFurn(c.pos, s.board, furn, fixed)) return true;
+    if (ownedTiles(p).length === 1 && (p.goals?.length ?? 0) < goalNeed(s.rules)) return true; // 目標が足りないうちは，最後の1枚は棚としても残せない
     fixed.push({ id: c.id, kind: c.kind, pos: { ...c.pos } });
     s.log.push(`${p.name}：${TILES[c.kind].name}が(${c.pos.x},${c.pos.y})に残った`);
     return false;

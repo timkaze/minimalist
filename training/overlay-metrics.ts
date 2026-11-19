@@ -5,7 +5,8 @@
 // ボットの名前は overlay-arena.ts を参照（search?… で探索ボット）
 
 import { writeFileSync } from 'node:fs';
-import { BUYABLE, EXPERIMENTAL, OKind, PERMS, TILES, isPerm } from '../src/overlay/tiles';
+import { ALL_PERMS as PERMS, BUYABLE, EXPERIMENTAL, OKind, TILES, isPerm } from '../src/overlay/tiles';
+import { GOALS, GoalKind } from '../src/overlay/engine';
 import { GRec, Job, PRec, f1, f2, mean, pct, quantile, runJobs, sePct, tileName, winShare } from './overlay-arena';
 
 const GAMES = Number(process.argv[2] ?? 2000);
@@ -21,7 +22,7 @@ const FAMILY: Record<string, OKind[]> = {
   '量のタイル': ['CALM', 'DOWN2', 'REST', 'CLEAN', 'MEMO'],
   '身軽・道連れ': ['LIGHT', 'DRAG'],
   '額・移動': ['BR', 'BREATH', 'SWING', 'FREE', 'TREAT', 'UP2', 'RUSH'],
-  '試作のタイル': EXPERIMENTAL,
+  '試作のタイル': EXPERIMENTAL.filter(k => !isPerm(k)),
 };
 const spendOf = (p: PRec, ks: OKind[]) => ks.reduce((n, k) => n + (p.bought[k] ?? 0) * (TILES[k].cost ?? 0), 0);
 /** 系統：片付けたい以外で，いちばんコストをかけた系統（合計3以下は最小限） */
@@ -93,6 +94,14 @@ async function main() {
   say(`- 止まったマス：取得 ${stop('buy')}・排除 ${stop('remove')}・なし ${stop('none')}・福袋 ${stop('gacha')}・運試し ${stop('lucky')}`);
   const pl = pool.flatMap(g => g.p);
   say(`- 決心チップ：もらった ${f2(mean(pl.map(p => p.chipsGot)))}枚/人・使った ${f2(mean(pl.map(p => p.chipsUsed)))}枚/人`);
+
+  // 目標
+  if (pool.some(g => g.goals.length)) {
+    const kinds = [...new Set(pool.flatMap(g => g.goals))];
+    say('\n### 目標（その目標が出た試合で，達成した人の割合．勝者の達成数）');
+    say(kinds.map(k => { const gs = pool.filter(g => g.goals.includes(k)); const ps = gs.flatMap(g => g.p); return `${GOALS[k as GoalKind].name} ${pct(ps.filter(p => p.goals.includes(k)).length, ps.length)}`; }).join('・'));
+    say(`- 達成数 平均：勝者 ${f2(mean(pool.flatMap(g => g.win.map(i => g.p[i].goals.length))))}・敗者 ${f2(mean(pool.flatMap(g => g.p.filter((_, i) => !g.win.includes(i)).map(p => p.goals.length))))}`);
+  }
 
   // ボットごとの強さ
   if (POOL.length > 1) {

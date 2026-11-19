@@ -4,12 +4,12 @@
 //   点数：mean = あと何手番かの平均（小さいほど良い）／win = 相手の残り手番の分布も見た勝つ確率
 // 仕様：Memories/01_BoardGames/ミニマリスト_オーバーレイ版_ボット強化_仕様.md
 
-import { BUYABLE, Dir, FURN_KINDS, OKind, PERMS, TILES, UNLIMITED_KINDS, isPerm } from './tiles';
+import { ALL_PERMS as PERMS, BUYABLE, Dir, FURN_KINDS, OKind, TILES, UNLIMITED_KINDS, isPerm } from './tiles';
 import {
   Env, Furn, MAX_CHIPS, OAction, OPlayer, OState, Placed, Pos, Rules, Tile, X_MAX, X_MIN, canBuyAt, canDraw, canDropAt, canMove, canPlaceFurn, chipNeed,
-  dirsOf, discardLimit, effectAt, envOf, exitPos, hasGlobal, isDeep, isLastCard, ownedTiles, samePos, yMax, yMin,
+  dirsOf, discardLimit, effectAt, envOf, exitPos, goalMet, goalNeed, hasGlobal, isDeep, isLastCard, ownedTiles, samePos, yMax, yMin,
 } from './engine';
-import { BAG_KINDS, BINS, KIDX, MIDX, NFEAT, NK, NM, ValueModel, boardExt, countsOf, featOfPlayer, fillFeat, kindWeights, permMaskOf, stockOf } from './value';
+import { BAG_KINDS, BINS, GOAL_BIT, KIDX, MIDX, NFEAT, NK, NM, ValueModel, boardExt, countsOf, featOfPlayer, fillFeat, goalMask, kindWeights, permMaskOf, popcount, stockOf } from './value';
 
 export interface SearchOpts {
   model: ValueModel;
@@ -32,7 +32,11 @@ interface Node { pos: Pos; hes: number; placed: Placed[]; bag: number[]; bagN: n
 /** 止まったときの選び方．flow・disc は種類ごとの枚数（置いたタイル／捨て山から排除），roomba は種類（-1 = 使わない） */
 interface Plan { u: number; buy: OKind[]; flow: number[] | null; roomba: number; disc: number[] | null; place?: Furn[] }
 /** 盤の様子（お気に入りの置き場所と棚）の特徴量 */
-interface Ext { key: string; v: number[] }
+/** g：達成した目標のビット（この手番の止まり方で達成するぶんを含む） */
+interface Ext { key: string; v: number[]; furn: Furn[]; shelves: Pos[]; g: number }
+/** 目標が足りないのに持ち物が0枚になる選び方（ルールで許されない）の点数 */
+const ILLEGAL = -1e6;
+const JUNK_K = KIDX.JUNK;
 /**
  * 止まったときの下ごしらえ：pc = 置いたタイルのうち選んで排除できる枚数，discP = 何もしなければ手番のあとに持ち物として残る枚数（袋以外），
  * base = 選ばなくても排除される枚数（盤のルンバ），shelves = 手番のあとの棚の位置，tag = これらを区別する文字列
@@ -51,7 +55,11 @@ class Turn {
   readonly weights: number[]; readonly owned: number[];
   /** どこでも効くお気に入り（盤に置くルールでは，大掃除の日とルンバはここに入らない） */
   readonly hasRoomba: boolean; readonly hasBigday: boolean;
+  /** 理性のお気に入り：ためらいで止まらない／排除の条件を無視／排除できた手番でも決心チップ */
+  readonly hasYutori: boolean; readonly noCond: boolean; readonly hasKakeibo: boolean;
   readonly furn0: Furn[]; readonly shelves0: Pos[]; readonly ext0: Ext; readonly roombaPos: Pos | null;
+  /** 目標：この試合の目標のビット，手番の初めに達成済みのビット，最後の1枚を排除するのに要る数 */
+  readonly goalsOn: number; readonly g0: number; readonly need: number;
   /** u[t] = この手番のあと t 手番で終わるときの点数（t = 0 はこの手番で終わる） */
   readonly u = new Float64Array(BINS + 1);
   private readonly x = new Float64Array(NFEAT);
@@ -76,17 +84,19 @@ class Turn {
     this.weights = kindWeights(s.rules);
     this.owned = countsOf(ownedTiles(p));
     this.hasRoomba = hasGlobal(p.perms, 'ROOMBA', s.rules); this.hasBigday = hasGlobal(p.perms, 'BIGDAY', s.rules);
+    this.hasYutori = p.perms.includes('YUTORI'); this.noCond = p.perms.includes('KOKOROE'); this.hasKakeibo = p.perms.includes('KAKEIBO');
     this.furn0 = s.rules.favBoard ? p.furn ?? [] : [];
     this.shelves0 = (p.fixed ?? []).map(f => f.pos);
+    this.goalsOn = goalMask(s.goals); this.g0 = goalMask(p.goals) & this.goalsOn; this.need = goalNeed(s.rules);
     this.ext0 = this.ext(this.shelves0, this.furn0);
     this.roombaPos = this.furn0.find(f => f.kind === 'ROOMBA')?.pos ?? null;
     this.setUtility();
   }
 
-  private ext(shelves: Pos[], furn: Furn[]): Ext {
-    const key = furn.map(f => f.kind + posKey(f.pos)).join(';') + '|' + shelves.map(posKey).join(';');
+  private ext(shelves: Pos[], furn: Furn[], g: number = this.g0): Ext {
+    const key = furn.map(f => f.kind + posKey(f.pos)).join(';') + '|' + shelves.map(posKey).join(';') + '|' + g;
     let e = this.extCache.get(key);
-    if (!e) this.extCache.set(key, e = { key, v: boardExt(furn, shelves) });
+    if (!e) this.extCache.set(key, e = { key, v: boardExt(furn, shelves, this.goalsOn & ~g, Math.max(0, this.need - popcount(g))), furn, shelves, g });
     return e;
   }
 
@@ -118,7 +128,7 @@ class Turn {
   /** 手番が終わったときの持ち物の点数．bag が空なら disc を袋とみなす */
   leaf(bag: ArrayLike<number>, disc: ArrayLike<number>, permMask: number, chips: number, removed: number, stock: ArrayLike<number>, ext: Ext, cache = true): number {
     const bn = sum(bag), dn = sum(disc);
-    if (bn + dn < 1e-9) return this.u[0];
+    if (bn + dn < 1e-9) return popcount(ext.g) >= this.need ? this.u[0] : ILLEGAL;
     if (bn < 1e-9) { bag = disc; disc = ZERO; }
     let key = '';
     if (cache) {
@@ -137,9 +147,17 @@ class Turn {
   }
 
   /** 排除の有無から決心チップの増減を決めて点数にする */
-  private finish(bag: ArrayLike<number>, disc: ArrayLike<number>, permMask: number, spent: number, nRemoved: number, stock: ArrayLike<number>, ext: Ext, cache = true): number {
+  private finish(bag: ArrayLike<number>, disc: ArrayLike<number>, permMask: number, spent: number, nRemoved: number, stock: ArrayLike<number>, ext: Ext, cache = true, junk = false, buyCost = 0): number {
+    // 目標のうち，選び方で決まるもの（3枚以上排除・ガラクタを排除・合計コスト5以上）
+    if (this.goalsOn) {
+      const dyn = ((nRemoved >= 3 ? GOAL_BIT.DUMP3 : 0) | (junk ? GOAL_BIT.JUNK : 0) | (buyCost >= 5 ? GOAL_BIT.BIGBUY : 0)) & this.goalsOn & ~ext.g;
+      if (dyn) ext = this.ext(ext.shelves, ext.furn, ext.g | dyn);
+    }
     let chips = this.chips - spent;
-    if (this.rules.chips && nRemoved === 0 && chips < MAX_CHIPS) chips++;
+    if (this.rules.chips) {
+      chips = Math.min(MAX_CHIPS, chips + popcount(ext.g & ~this.g0)); // 目標を達成したぶん
+      if ((nRemoved === 0 || this.hasKakeibo) && chips < MAX_CHIPS) chips++;
+    }
     return this.leaf(bag, disc, permMask, chips, this.p.removed + nRemoved, stock, ext, cache);
   }
 
@@ -158,18 +176,27 @@ class Turn {
         discP[k]--; (added ??= []).push(t.pos); // 盤に残って持ち物から外れる
       }
     }
-    if (added) { shelves = [...this.shelves0, ...added]; ext = this.ext(shelves, this.furn0); tag += 's' + added.map(posKey).join(';'); }
+    if (added) { shelves = [...this.shelves0, ...added]; tag += 's' + added.map(posKey).join(';'); }
+    let eatenJunk = false;
     if (this.roombaPos) {
       const rp = this.roombaPos;
       const first = node.placed.find(c => samePos(c.pos, rp));
-      if (first && !TILES[first.kind].stay) { const k = KIDX[first.kind]; pc[k]--; discP[k]--; base = 1; tag += 'r' + k; }
+      if (first && !TILES[first.kind].stay) { const k = KIDX[first.kind]; pc[k]--; discP[k]--; base = 1; tag += 'r' + k; eatenJunk = k === JUNK_K; }
     }
+    // 目標のうち，止まった場所と置いたタイルで決まるもの
+    let g = this.g0;
+    if (this.goalsOn & ~this.g0) {
+      const info = { pos: node.pos, placed: node.placed, fx: effectAt(this.env, node.placed, node.pos).kind, nRemoved: base, junk: eatenJunk, buyCost: 0 };
+      for (const k of this.s.goals!) if (!(g & GOAL_BIT[k]) && goalMet(k, this.s.board, info)) g |= GOAL_BIT[k];
+      if (g !== this.g0) tag += 'g' + g;
+    }
+    if (added || g !== this.g0) ext = this.ext(shelves, this.furn0, g);
     return { pc, discP, ext, shelves, base, tag };
   }
 
   // ---- 取得 ----
 
-  /** 額 amount・衝動 lvl の列で買える組み合わせ（1回に4枚まで．同じ種類は3枚まで） */
+  /** 額 amount・列 lvl（−2〜2．負は理性）で買える組み合わせ（1回に4枚まで．同じ種類は3枚まで） */
   private buyOptions(amount: number, lvl: number): OKind[][] {
     const key = `${amount}:${lvl}`;
     let out = this.buyAll.get(key);
@@ -244,8 +271,8 @@ class Turn {
   }
 
   /** buy を買ったあとの点数（捨て山 disc に足す．お気に入りは permMask へ） */
-  private buyValue(buy: OKind[], bag: number[], disc: number[], nRemoved: number, st: Sit): number {
-    if (!buy.length) return this.finish(bag, disc, this.permMask, 0, nRemoved, this.stock, st.ext);
+  private buyValue(buy: OKind[], bag: number[], disc: number[], nRemoved: number, st: Sit, junk = false): number {
+    if (!buy.length) return this.finish(bag, disc, this.permMask, 0, nRemoved, this.stock, st.ext, true, junk);
     const d = disc.slice(), stk = this.stock.slice();
     let mask = this.permMask;
     for (const k of buy) {
@@ -253,8 +280,8 @@ class Turn {
       if (!UNLIMITED_KINDS.includes(k)) stk[MIDX[k]]--;
     }
     const place = this.placeOf(buy);
-    const ext = place.length ? this.ext(st.shelves, [...this.furn0, ...place]) : st.ext;
-    return this.finish(bag, d, mask, 0, nRemoved, stk, ext) + this.bonusOf(buy);
+    const ext = place.length ? this.ext(st.shelves, [...this.furn0, ...place], st.ext.g) : st.ext;
+    return this.finish(bag, d, mask, 0, nRemoved, stk, ext, true, junk, buy.reduce((n, k) => n + (TILES[k].cost ?? 0), 0)) + this.bonusOf(buy);
   }
 
   /** 探索の葉で試す組み合わせ：今の持ち物で点数の高い順に少数だけ（葉ごとに全部は試さない） */
@@ -299,11 +326,11 @@ class Turn {
     const flow = new Array(NK).fill(0), tiles: Tile[] = [];
     const rec = (i: number) => {
       if (i === kinds.length) {
-        const need = chipNeed(tiles, [], x, q, rules, this.hasBigday);
+        const need = chipNeed(tiles, [], x, q, rules, this.hasBigday, this.noCond);
         if (need > this.chips) return;
         const d = discP.slice();
         for (const k of kinds) d[k] -= flow[k];
-        const u = this.finish(bag, d, this.permMask, need, st.base + tiles.length, this.stock, st.ext, cache);
+        const u = this.finish(bag, d, this.permMask, need, st.base + tiles.length, this.stock, st.ext, cache, flow[JUNK_K] > 0);
         if (tops.length < 2 || u > tops[tops.length - 1].u) {
           tops.push({ u, buy: [], flow: flow.slice(), roomba: -1, disc: null });
           tops.sort((a, b) => b.u - a.u);
@@ -322,18 +349,18 @@ class Turn {
     let best: Plan | null = null;
     for (const t of tops) {
       const fl = t.flow!, nFlow = sum(fl);
-      const need = chipNeed(BAG_KINDS.flatMap((k, i) => Array.from({ length: fl[i] }, () => ({ id: 0, kind: k }))), [], x, q, rules, this.hasBigday);
+      const need = chipNeed(BAG_KINDS.flatMap((k, i) => Array.from({ length: fl[i] }, () => ({ id: 0, kind: k }))), [], x, q, rules, this.hasBigday, this.noCond);
       const d = discP.slice();
       for (let k = 0; k < NK; k++) d[k] -= fl[k];
-      let plan = this.withRoomba(t, pc, fl, r => { d[r]--; const u = this.finish(bag, d, this.permMask, need, st.base + nFlow + 1, this.stock, st.ext, cache); d[r]++; return u; });
+      let plan = this.withRoomba(t, pc, fl, r => { d[r]--; const u = this.finish(bag, d, this.permMask, need, st.base + nFlow + 1, this.stock, st.ext, cache, fl[JUNK_K] > 0 || r === JUNK_K); d[r]++; return u; });
       let n = st.base + nFlow + (plan.roomba >= 0 ? 1 : 0);
       if (plan.roomba >= 0) d[plan.roomba]--;
       const left = discOk.slice(), dz = new Array(NK).fill(0);
       for (let i = 0; i < limit; i++) {
         let bk = -1, bu = plan.u;
         for (let k = 0; k < NK; k++) {
-          if (left[k] < 1 || !canDropAt(BAG_KINDS[k], x, rules)) continue;
-          d[k]--; const u = this.finish(bag, d, this.permMask, need, n + 1, this.stock, st.ext, cache); d[k]++;
+          if (left[k] < 1 || !canDropAt(BAG_KINDS[k], x, rules, this.noCond)) continue;
+          d[k]--; const u = this.finish(bag, d, this.permMask, need, n + 1, this.stock, st.ext, cache, fl[JUNK_K] > 0 || plan.roomba === JUNK_K || dz[JUNK_K] > 0 || k === JUNK_K); d[k]++;
           if (u > bu) { bu = u; bk = k; }
         }
         if (bk < 0) break;
@@ -348,7 +375,7 @@ class Turn {
   /** 今のマスで止まったときの一番良い選び方．exact：実際に止まったあと（取得は全部の組み合わせを試す．運試しは引いた結果を使う） */
   plan(node: Node, exact: boolean, st: Sit = this.sit(node)): Plan {
     const { p, rules } = this;
-    if (rules.lastCard && node.bagN === 0 && node.discN === 0 && node.placed.length === 1) {
+    if (rules.lastCard && node.bagN === 0 && node.discN === 0 && node.placed.length === 1 && popcount(st.ext.g) >= this.need) {
       const fl = new Array(NK).fill(0); fl[KIDX[node.placed[0].kind]] = 1;
       return { u: this.u[0], buy: [], flow: fl, roomba: -1, disc: null };
     }
@@ -357,11 +384,11 @@ class Turn {
     const x = node.pos.x;
     const idle = (): Plan => {
       const base: Plan = { u: this.finish(node.bag, discP, this.permMask, 0, st.base, this.stock, st.ext), buy: [], flow: null, roomba: -1, disc: null };
-      return this.withRoomba(base, pc, null, r => { discP[r]--; const u = this.finish(node.bag, discP, this.permMask, 0, st.base + 1, this.stock, st.ext); discP[r]++; return u; });
+      return this.withRoomba(base, pc, null, r => { discP[r]--; const u = this.finish(node.bag, discP, this.permMask, 0, st.base + 1, this.stock, st.ext, true, r === JUNK_K); discP[r]++; return u; });
     };
     switch (fx.kind) {
       case 'buy': {
-        const lvl = Math.min(2, Math.max(0, x)); // 取得の条件は衝動2まで
+        const lvl = Math.max(-2, Math.min(2, x)); // 取得の条件は衝動2・理性2まで
         const opts = exact ? this.buyOptions(fx.amount, lvl) : this.shortBuy(fx.amount, lvl);
         if (exact && this.o.epsBuy && this.o.rand && this.o.rand() < this.o.epsBuy) {
           const b = opts[Math.floor(this.o.rand() * opts.length)];
@@ -370,7 +397,7 @@ class Turn {
         let best: Plan | null = null;
         for (const b of opts) {
           const base: Plan = { u: this.buyValue(b, node.bag, discP, st.base, st), buy: b, flow: null, roomba: -1, disc: null };
-          const pl = this.withRoomba(base, pc, null, r => { discP[r]--; const u = this.buyValue(b, node.bag, discP, st.base + 1, st); discP[r]++; return u; });
+          const pl = this.withRoomba(base, pc, null, r => { discP[r]--; const u = this.buyValue(b, node.bag, discP, st.base + 1, st, r === JUNK_K); discP[r]++; return u; });
           if (!best || pl.u > best.u) best = pl;
         }
         if (exact) best!.place = this.placeOf(best!.buy);
@@ -414,7 +441,7 @@ class Turn {
     const fx = effectAt(this.env, node.placed, node.pos);
     if (fx.kind !== 'buy') return [];
     const st = this.sit(node);
-    return this.buyOptions(fx.amount, Math.min(2, Math.max(0, node.pos.x))).map(b => ({ buy: b, u: this.buyValue(b, node.bag, st.discP, st.base, st) })).sort((a, b) => b.u - a.u);
+    return this.buyOptions(fx.amount, Math.max(-2, Math.min(2, node.pos.x))).map(b => ({ buy: b, u: this.buyValue(b, node.bag, st.discP, st.base, st) })).sort((a, b) => b.u - a.u);
   }
 
   stopValue(node: Node): number {
@@ -436,7 +463,7 @@ class Turn {
     if (!this.rules.refill || node.discN === 0) return null;
     return { bag: node.disc, bagN: node.discN, disc: ZERO, discN: 0 };
   }
-  private forced(kind: OKind, hes: number) { return kind === 'HES' && (this.rules.hes === 'first' || hes + 1 >= 2); }
+  private forced(kind: OKind, hes: number) { return kind === 'HES' && !this.hasYutori && (this.rules.hes === 'first' || hes + 1 >= 2); }
 
   /** 次の1枚で分かれる枝の数（種類×向き．必ず止まるタイルは先を読まないので軽く数える） */
   private branching(src: { bag: number[] }, hes: number): number {
@@ -522,7 +549,7 @@ export function chooseSearchAction(s: OState, o: SearchOpts): OAction {
   const t = turnOf(s, o);
   switch (s.turn) {
     case 'resolve': {
-      if (s.rules.lastCard && isLastCard(p)) return { type: 'resolve', buy: [], remove: [p.placed[0].id] };
+      if (s.rules.lastCard && isLastCard(p) && t.need <= popcount(t.g0)) return { type: 'resolve', buy: [], remove: [p.placed[0].id] };
       const pl = t.plan(t.root(), true);
       const used = new Set<number>(p.rollIds ?? []);
       // 盤のルンバが吸うタイル（そのマスに最初に置いたもの）は，選んで排除する対象から外しておく

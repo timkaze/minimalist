@@ -28,10 +28,14 @@ export interface PRec {
   bought: Partial<Record<OKind, number>>;
   gacha: number; perms: OKind[]; permRound: Partial<Record<OKind, number>>;
   chipsUsed: number; chipsGot: number;
+  /** 達成した目標 */
+  goals: string[];
 }
 export interface GRec {
   n: number; set: string; round: number; win: number[]; p: PRec[]; sold: OKind[]; market: OKind[];
   stops: Record<StopKind, number>; turns: number; drawn: number; onTile: number; drewAll: number;
+  /** この試合の目標 */
+  goals: string[];
 }
 
 export interface PlayOpts { set?: string; rules?: Partial<Rules>; stock?: 'normal' | 'plenty'; rand?: () => number; onTurnStart?: (s: OState, seat: number) => void }
@@ -55,8 +59,8 @@ export function playGame(agents: Agent[], who: string[], seed: number, o: PlayOp
   const set = o.set ?? 'all';
   const s = newOverlayGame(who.map((w, i) => ({ name: `${w}${i}`, isBot: true })), seed, { rules: o.rules, market: marketOf(set, o.rand) });
   if (o.stock === 'plenty') for (const k of Object.keys(s.market) as OKind[]) s.market[k] = 99;
-  const p: PRec[] = who.map(w => ({ who: w, left: 0, removed: 0, finished: false, turns: 0, bought: {}, gacha: 0, perms: [], permRound: {}, chipsUsed: 0, chipsGot: 0 }));
-  const g: GRec = { n: who.length, set, round: 0, win: [], p, sold: [], market: Object.keys(s.market) as OKind[], stops: { buy: 0, remove: 0, none: 0, gacha: 0, lucky: 0 }, turns: 0, drawn: 0, onTile: 0, drewAll: 0 };
+  const p: PRec[] = who.map(w => ({ who: w, left: 0, removed: 0, finished: false, turns: 0, bought: {}, gacha: 0, perms: [], permRound: {}, chipsUsed: 0, chipsGot: 0, goals: [] }));
+  const g: GRec = { n: who.length, set, round: 0, win: [], p, sold: [], market: Object.keys(s.market) as OKind[], stops: { buy: 0, remove: 0, none: 0, gacha: 0, lucky: 0 }, turns: 0, drawn: 0, onTile: 0, drewAll: 0, goals: [...(s.goals ?? [])] };
   let guard = 0, lastTurn = '';
   while (s.phase === 'play' && guard++ < 200000) {
     const seat = s.current, pl = s.players[seat];
@@ -82,7 +86,7 @@ export function playGame(agents: Agent[], who: string[], seed: number, o: PlayOp
   }
   if (s.phase === 'play') throw new Error('試合が終わりません');
   g.round = s.round; g.win = s.winners;
-  s.players.forEach((q, i) => { p[i].left = ownedTiles(q).length; p[i].removed = q.removed; p[i].finished = q.finished; p[i].perms = [...q.perms]; });
+  s.players.forEach((q, i) => { p[i].left = ownedTiles(q).length; p[i].removed = q.removed; p[i].finished = q.finished; p[i].perms = [...q.perms]; p[i].goals = [...(q.goals ?? [])]; });
   g.sold = (Object.keys(s.market) as OKind[]).filter(k => s.market[k] === 0);
   return g;
 }

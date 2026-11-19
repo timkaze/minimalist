@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BUYABLE, OKind, marketFromChoice } from '../src/overlay/tiles';
 import { OState, Rules, UNLIMITED, applyOverlay, hereFx, newOverlayGame, ownedTiles } from '../src/overlay/engine';
-import { OPRESETS, playOverlayTurn } from '../src/overlay/bot';
+import { OPRESETS, chooseOverlayAction, playOverlayTurn } from '../src/overlay/bot';
 import { chooseSearchAction } from '../src/overlay/search';
 import { BINS, FEAT_VERSION, NFEAT, ValueJson, ValueModel, featNames } from '../src/overlay/value';
 
@@ -80,6 +80,116 @@ describe('オーバーレイ版の試作タイル', () => {
     expect(t.players[0].fixed ?? []).toEqual([]);
     expect(t.players[0].discard.some(c => c.kind === 'SHELF')).toBe(true);
   });
+});
+
+describe('理性のお気に入り（試作）とお気に入りの在庫', () => {
+  it('理性の列でしか取得できない', () => {
+    const s = game({}, marketFromChoice('calm'));
+    stack(s, 'RUSH', 'UP2', 'UP2'); // (1,2)：額 3+1 = 4，衝動1
+    for (let i = 0; i < 3; i++) draw(s);
+    stop(s);
+    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: ['YUTORI'], remove: [] })).toThrow(/理性1以上/);
+    const t = game({}, marketFromChoice('calm'));
+    stack(t, 'DOUBT', 'WANT'); // (-1,1)：特別なマスの額3，理性1
+    draw(t); draw(t); stop(t);
+    applyOverlay(t, 0, { type: 'resolve', buy: ['YUTORI'], remove: [] });
+    expect(t.players[0].perms).toEqual(['YUTORI']);
+  });
+
+  it('ゆとり：ためらいが出ても止まらない', () => {
+    const s = game();
+    s.players[0].perms.push('YUTORI');
+    stack(s, 'HES', 'DOWN');
+    draw(s);
+    applyOverlay(s, 0, { type: 'branch', dir: 'L' });
+    expect(s.turn).toBe('move'); // 止まらず，続けて引ける
+    draw(s);
+    expect(s.players[0].pos).toEqual({ x: -1, y: -1 });
+  });
+
+  it('手放す覚悟：排除の条件（理性）を無視できる', () => {
+    for (const has of [false, true]) {
+      const s = game({ chips: false });
+      const p = s.players[0];
+      if (has) p.perms.push('KOKOROE');
+      p.discard = [{ id: s.nextId++, kind: 'WANT' }];
+      stack(s, 'JUNK', 'DOWN', 'DOWN', 'DOWN'); // (1,0)→(1,-1) 運試し→(1,-2)→(1,-3)：衝動1の量2
+      for (let i = 0; i < 4; i++) draw(s);
+      expect(here(s)).toEqual({ kind: 'remove', amount: 2 });
+      stop(s);
+      const junk = p.placed[0].id; // ガラクタ：重さ2・理性1で排除
+      if (has) { applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [junk] }); expect(p.removed).toBe(1); }
+      else expect(() => applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [junk] })).toThrow();
+    }
+  });
+
+  it('家計簿：排除できた手番でも決心チップを1枚もらう', () => {
+    const s = game();
+    const p = s.players[0];
+    p.perms.push('KAKEIBO');
+    p.discard = [{ id: s.nextId++, kind: 'WANT' }];
+    stack(s, 'DOWN');
+    draw(s); stop(s);
+    applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [p.placed[0].id] });
+    expect(p.removed).toBe(1);
+    expect(p.chips).toBe(1);
+  });
+
+  it('お気に入りの在庫を各1枚にできる（取り合い）', () => {
+    const s = newOverlayGame([{ name: 'A' }, { name: 'B' }, { name: 'C' }], 1, { rules: { favOne: true } });
+    expect(s.market.BIGDAY).toBe(1);
+    expect(s.market.DOWN2).toBe(3);
+    expect(newOverlayGame([{ name: 'A' }, { name: 'B' }, { name: 'C' }], 1).market.BIGDAY).toBe(3);
+  });
+});
+
+describe('目標', () => {
+  it('3枚めくられ，止まり方が条件を満たすと達成して決心チップをもらう', () => {
+    const s = game({ goals: 'bonus' });
+    expect(s.goals!.length).toBe(3);
+    expect(game().goals).toBeUndefined();
+    s.goals = ['WALK5', 'CALM3', 'JUNK'];
+    const p = s.players[0];
+    stack(s, 'DOUBT', 'DOUBT', 'DOUBT'); // 理性3の列へ
+    for (let i = 0; i < 3; i++) draw(s);
+    stop(s);
+    applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [] });
+    expect(p.goals).toEqual(['CALM3']);
+    expect(p.chips).toBe(2); // 目標 +1，排除できなかった手番 +1
+    expect(s.log[s.log.length - 1]).toContain('理性の果て');
+  });
+
+  it('need1：目標を1つ達成するまで，最後の1枚は排除できない', () => {
+    const s = game({ goals: 'need1' });
+    s.goals = ['TOP', 'IMP3', 'BIGBUY'];
+    const p = s.players[0];
+    stack(s, 'DOWN'); p.discard = [];
+    draw(s); stop(s);
+    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [p.placed[0].id] })).toThrow(/目標をあと1つ/);
+    const t = game({ goals: 'need1' });
+    t.goals = ['DUMP3', 'IMP3', 'BIGBUY'];
+    const q = t.players[0];
+    stack(t, 'DOWN2', 'DOWN', 'DOWN'); q.discard = []; // (0,-3)：量2＋運ぶ1 = 3．3枚まとめて排除＝目標達成と同時に終われる
+    for (let i = 0; i < 3; i++) draw(t);
+    stop(t);
+    applyOverlay(t, 0, { type: 'resolve', buy: [], remove: q.placed.map(c => c.id) });
+    expect(q.goals).toEqual(['DUMP3']);
+    expect(q.finished).toBe(true);
+  });
+
+  it('探索ボットは目標を達成してから終わる（need2）．以前のボットも止まらない', () => {
+    let a = 5;
+    const r = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296 - 0.5; };
+    const layer = (i: number, o: number) => ({ in: i, out: o, w: Array.from({ length: i * o }, () => r() * 0.4), b: Array.from({ length: o }, r) });
+    const model = new ValueModel({ version: FEAT_VERSION, feat: NFEAT, bins: BINS, names: featNames(), layers: [layer(NFEAT, 12), layer(12, BINS)] });
+    const o = { model, objective: 'mean' as const, budget: 60 };
+    const s = newOverlayGame([{ name: 'A' }, { name: 'B' }], 4, { rules: { goals: 'need2' } });
+    let guard = 0;
+    while (s.phase === 'play' && guard++ < 60000) applyOverlay(s, s.current, s.current === 0 ? chooseSearchAction(s, o) : chooseOverlayAction(s, OPRESETS.aiFree));
+    expect(s.phase).toBe('over');
+    for (const i of s.winners) expect(s.players[i].goals!.length).toBeGreaterThanOrEqual(2);
+    expect(featNames().length).toBe(NFEAT);
+  }, 120000);
 });
 
 describe('最後の1枚', () => {

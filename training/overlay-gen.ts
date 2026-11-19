@@ -8,7 +8,7 @@
 
 import './overlay-variant';
 import { writeFileSync } from 'node:fs';
-import { OKind, PERMS, isPerm } from '../src/overlay/tiles';
+import { ALL_PERMS as PERMS, OKind, isPerm } from '../src/overlay/tiles';
 import { marketOf } from './overlay-arena';
 import { OPRESETS, chooseOverlayAction } from '../src/overlay/bot';
 import { OAction, OState, applyOverlay, newOverlayGame } from '../src/overlay/engine';

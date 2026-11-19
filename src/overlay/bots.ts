@@ -2,7 +2,7 @@
 //   search：探索＋評価関数（search.ts・value.json）．value.json は既定のルールで学習したもの（ほかのルールでも動くが，強さは落ちる）
 //   それ以外：型ごとの買い方を持つ以前のボット（bot.ts の OPRESETS）
 
-import { OAction, OState } from './engine';
+import { OAction, OState, goalNeed } from './engine';
 import { OPRESETS, SEARCH_BOT, chooseOverlayAction } from './bot';
 import { SearchOpts, chooseSearchAction } from './search';
 import { ValueJson, ValueModel } from './value';
@@ -21,6 +21,7 @@ function searchOpts(budget: number): SearchOpts {
 }
 
 export function botAction(s: OState, botType: string | undefined, budget = 800): OAction {
-  if (botType === SEARCH_BOT) return chooseSearchAction(s, searchOpts(budget));
+  // 目標を達成しないと終われないルールでは，目標を狙えない以前のボットは使わない
+  if (botType === SEARCH_BOT || goalNeed(s.rules) > 0) return chooseSearchAction(s, searchOpts(budget));
   return chooseOverlayAction(s, OPRESETS[botType ?? 'light'] ?? OPRESETS.light);
 }
