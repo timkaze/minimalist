@@ -1,0 +1,11 @@
+== bigbag2: OV_TILES= RULES={"bigBag":true} SET=all
+特徴量 115，装置 cuda，出力 /home/tomida/git/minimalist-exp2/training/overlay-runs/fit_exp_bigbag2
+[1] データ 91259行（作成 319秒，終わらなかった人 1.4%）学習 2秒  検証 CE 1.801  手番数の誤差 1.98（平均で当てた場合 4.65）
+[2] データ 195826行（作成 245秒，終わらなかった人 7.0%）学習 2秒  検証 CE 1.914  手番数の誤差 3.50（平均で当てた場合 7.10）
+[3] データ 283064行（作成 252秒，終わらなかった人 1.1%）学習 3秒  検証 CE 1.897  手番数の誤差 3.05（平均で当てた場合 6.41）
+[4] データ 366450行（作成 230秒，終わらなかった人 0.8%）学習 3秒  検証 CE 1.849  手番数の誤差 2.77（平均で当てた場合 5.82）
+保存 /home/tomida/git/minimalist-exp2/training/overlay-runs/exp_bigbag2/value_last.json（計 1056秒）
+特徴量 115，装置 cuda，出力 /home/tomida/git/minimalist-exp2/training/overlay-runs/fit_exp_bigbag2
+[refit] データ 366450行  検証 CE 1.848  手番数の誤差 2.73（平均で当てた場合 5.82）
+保存 /home/tomida/git/minimalist-exp2/training/overlay-runs/exp_bigbag2/value.json
+== done bigbag2

@@ -1,0 +1,11 @@
+== kodawari5: OV_TILES={"KODAWARI":{"cost":5}} RULES={} SET=all
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_kodawari5
+[1] データ 76148行（作成 123秒，終わらなかった人 0.1%）学習 2秒  検証 CE 1.408  手番数の誤差 1.01（平均で当てた場合 2.80）
+[2] データ 216062行（作成 211秒，終わらなかった人 38.9%）学習 2秒  検証 CE 1.129  手番数の誤差 2.66（平均で当てた場合 16.26）
+[3] データ 302082行（作成 151秒，終わらなかった人 1.1%）学習 3秒  検証 CE 1.295  手番数の誤差 2.57（平均で当てた場合 14.19）
+[4] データ 380460行（作成 124秒，終わらなかった人 0.3%）学習 3秒  検証 CE 1.326  手番数の誤差 2.23（平均で当てた場合 12.40）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_kodawari5/value_last.json（計 618秒）
+特徴量 98，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_kodawari5
+[refit] データ 380460行  検証 CE 1.321  手番数の誤差 2.18（平均で当てた場合 12.40）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_kodawari5/value.json
+== done kodawari5

@@ -1,0 +1,11 @@
+== calm2_favone: OV_TILES= RULES={"favOne":true} SET=calm
+特徴量 114，装置 cuda，出力 /home/tomida/git/minimalist-exp3/training/overlay-runs/fit_exp_calm2_favone
+[1] データ 75359行（作成 125秒，終わらなかった人 0.1%）学習 2秒  検証 CE 1.425  手番数の誤差 1.00（平均で当てた場合 2.83）
+[2] データ 180628行（作成 196秒，終わらなかった人 12.1%）学習 2秒  検証 CE 1.622  手番数の誤差 3.31（平均で当てた場合 9.24）
+[3] データ 257955行（作成 129秒，終わらなかった人 0.1%）学習 2秒  検証 CE 1.587  手番数の誤差 2.70（平均で当てた場合 7.19）
+[4] データ 333406行（作成 122秒，終わらなかった人 0.0%）学習 3秒  検証 CE 1.546  手番数の誤差 2.29（平均で当てた場合 6.18）
+保存 /home/tomida/git/minimalist-exp3/training/overlay-runs/exp_calm2_favone/value_last.json（計 581秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/minimalist-exp3/training/overlay-runs/fit_exp_calm2_favone
+[refit] データ 333406行  検証 CE 1.542  手番数の誤差 2.24（平均で当てた場合 6.18）
+保存 /home/tomida/git/minimalist-exp3/training/overlay-runs/exp_calm2_favone/value.json
+== done calm2_favone
