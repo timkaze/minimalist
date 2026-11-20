@@ -159,7 +159,7 @@ class Turn {
     let chips = this.chips - spent;
     if (this.rules.chips) {
       chips = Math.min(MAX_CHIPS, chips + popcount(ext.g & ~this.g0)); // 目標を達成したぶん
-      if ((nRemoved === 0 || this.hasKakeibo) && chips < MAX_CHIPS) chips++;
+      if (((this.rules.chipGain === 'idle' && nRemoved === 0) || this.hasKakeibo) && chips < MAX_CHIPS) chips++;
     }
     const v = this.leaf(bag, disc, permMask, chips, this.p.removed + nRemoved, stock, ext, cache);
     return this.o.goalBonus && ext.g !== this.g0 ? v + this.o.goalBonus * popcount(ext.g & ~this.g0) : v;

@@ -164,6 +164,21 @@ describe('目標', () => {
     expect(s.log[s.log.length - 1]).toContain('理性の果て');
   });
 
+  it('chipGain=goal：排除できなかった手番ではもらわず，目標の達成でだけもらう', () => {
+    const s = game({ goals: 'bonus', chipGain: 'goal' });
+    s.goals = ['CALM3', 'TOP', 'BIGBUY'];
+    const p = s.players[0];
+    stack(s, 'DOUBT'); draw(s); stop(s);
+    applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [] });
+    expect(p.chips).toBe(0);
+    pass(s);
+    stack(s, 'DOUBT', 'DOUBT', 'DOUBT');
+    for (let i = 0; i < 3; i++) draw(s);
+    stop(s);
+    applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [] });
+    expect(p.chips).toBe(1);
+  });
+
   it('need1：目標を1つ達成するまで，最後の1枚は排除できない', () => {
     const s = game({ goals: 'need1' });
     s.goals = ['TOP', 'IMP3', 'BIGBUY'];

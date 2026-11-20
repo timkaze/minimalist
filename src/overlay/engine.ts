@@ -71,8 +71,10 @@ export interface Rules {
    *   off = なし／bonus = ごほうびだけ／need1・need2 = その数を達成するまで，最後の1枚は排除できない
    */
   goals: 'off' | 'bonus' | 'need1' | 'need2';
+  /** 決心チップのもらい方：idle = 1枚も排除できなかった手番の終わりに1枚（目標の達成でも1枚）／goal = 目標の達成でだけもらう（家計簿は別） */
+  chipGain: 'idle' | 'goal';
 }
-export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 2, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: false, goals: 'off' };
+export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 2, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: false, goals: 'off', chipGain: 'idle' };
 
 /** 外から来たルールを整える（不正な値は既定に） */
 export function normRules(r: Partial<Rules> | undefined | null): Rules {
@@ -96,6 +98,7 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
     bigBag: bool(x.bigBag, d.bigBag),
     carry: bool(x.carry, d.carry),
     favOne: bool(x.favOne, d.favOne),
+    chipGain: x.chipGain === 'goal' ? 'goal' : 'idle',
     goals: x.goals === 'bonus' || x.goals === 'need1' || x.goals === 'need2' || x.goals === 'off' ? x.goals : d.goals,
   };
 }
@@ -561,7 +564,7 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
   s.log.push(parts.join(' / '));
   // 決心チップ：この手番に1枚も排除できなかったらもらう
   // 決心チップ：1枚も排除できなかった手番の終わりに1枚（家計簿があれば，排除できた手番でも）
-  if (s.rules.chips && (p.removed === removedBefore || p.perms.includes('KAKEIBO')) && ownedTiles(p).length && (p.chips ?? 0) < MAX_CHIPS) {
+  if (s.rules.chips && ((s.rules.chipGain === 'idle' && p.removed === removedBefore) || p.perms.includes('KAKEIBO')) && ownedTiles(p).length && (p.chips ?? 0) < MAX_CHIPS) {
     p.chips = (p.chips ?? 0) + 1;
     s.log[s.log.length - 1] += ' / 決心チップ+1';
   }
