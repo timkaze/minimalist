@@ -343,3 +343,48 @@ function optsFor(model: ValueModel, rand: () => number) {
   if (!o) optsCache.set(model, o = mk(model, rand));
   return o;
 }
+
+describe('v0.6 で作り直したタイル', () => {
+  it('ご褒美：この上で止まったら決心チップ+1', () => {
+    const s = game({ chipGain: 'goal' });
+    const p = s.players[0];
+    stack(s, 'TREAT', 'WANT'); draw(s); stop(s);
+    expect(here(s)).toEqual({ kind: 'buy', amount: 2 });
+    const before = s.market.TREAT ?? 0;
+    applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [] });
+    expect(p.chips).toBe(1);
+    // 使い切り：持ち物から外れて市場へ戻る
+    expect([...p.bag, ...p.discard].some(c => c.kind === 'TREAT')).toBe(false);
+    expect(s.market.TREAT).toBe(before + 1);
+  });
+
+  it('使い切り：排除はできず，最後の1枚なら戻らない', () => {
+    const s = game({ chipGain: 'goal', special: false });
+    const p = s.players[0];
+    stack(s, 'JUNK', 'LIGHT'); draw(s); draw(s); stop(s);
+    const light = p.placed.find(c => c.kind === 'LIGHT')!;
+    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [light.id] })).toThrow(/使い切り/);
+    const t = game({ chipGain: 'goal' });
+    const q = t.players[0];
+    stack(t, 'TREAT'); q.discard = [];
+    draw(t); stop(t);
+    applyOverlay(t, 0, { type: 'resolve', buy: [], remove: [] });
+    expect(q.discard.map(c => c.kind)).toEqual(['TREAT']);
+  });
+
+  it('軽やか：盤にあるあいだ排除の条件（理性n）を無視できる', () => {
+    const run = (first: 'LIGHT' | 'DOWN') => {
+      const s = game({ chipGain: 'goal', special: false }); // (1,-1) を運試しでなく量1に
+      const p = s.players[0];
+      p.chips = 1;
+      stack(s, 'JUNK', first); draw(s); draw(s); stop(s);
+      return { s, p, fx: here(s), junk: p.placed.find(c => c.kind === 'JUNK')! };
+    };
+    const a = run('LIGHT');
+    expect(a.fx.kind).toBe('remove');
+    applyOverlay(a.s, 0, { type: 'resolve', buy: [], remove: [a.junk.id] }); // 重さ2・量1：チップ1枚は重さに，条件は軽やかで免除
+    expect(a.p.chips).toBe(0);
+    const b = run('DOWN');
+    expect(() => applyOverlay(b.s, 0, { type: 'resolve', buy: [], remove: [b.junk.id] })).toThrow();
+  });
+});

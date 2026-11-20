@@ -1,7 +1,7 @@
 // オーバーレイ版のボット．引くか止めるかは「止めたときの価値」と「引き続けたときの期待値」（2枚先まで）を比べて決める．
 // 型（genome）ごとに取得の優先順が違う
 
-import { Dir, OKind, TILES, isPerm, weightOf } from './tiles';
+import { Dir, OKind, TILES, isPerm, weightOf, condFree, lockedOnBoard } from './tiles';
 import {
   Env, OAction, OPlayer, OState, Tile, Walk, applyOverlay, canBuyAt, canDraw, canDropAt, chipNeed, dirsOf, discardLimit, effectAt, envOf, hereFx,
   goalNeed, hasGlobal, isDeep, isLastCard, leaveTile, ownedTiles, putTile,
@@ -84,10 +84,10 @@ function trashScore(c: Ctx, t: Tile): number {
 export function planRemove(c: Ctx, flow: Tile[], amount: number, deep: boolean, xcol: number): { remove: number[]; value: number } {
   const owned = ownedTiles(c.p);
   const rules = c.s.rules;
-  const big = hasGlobal(c.p.perms, 'BIGDAY', rules), noCond = c.p.perms.includes('KOKOROE');
+  const big = hasGlobal(c.p.perms, 'BIGDAY', rules), noCond = condFree(c.p.perms, c.p.placed);
   // 決心チップは，捨てたいタイル（初期タイル・型に無いタイル）にだけ使う
   const chips = rules.chips ? c.p.chips ?? 0 : 0;
-  const cand = flow.filter(t => !TILES[t.kind].stay && (canDropAt(t.kind, xcol, rules, noCond) || (chips > 0 && trashScore(c, t) >= 5))).sort((a, b) => trashScore(c, b) - trashScore(c, a));
+  const cand = flow.filter(t => !lockedOnBoard(t.kind, ownedTiles(c.p).length) && (canDropAt(t.kind, xcol, rules, noCond) || (chips > 0 && trashScore(c, t) >= 5))).sort((a, b) => trashScore(c, b) - trashScore(c, a));
   const chosen: Tile[] = [];
   for (const t of cand) {
     const need = chipNeed([...chosen, t], [], xcol, amount, rules, big, noCond);
@@ -111,7 +111,7 @@ export function planRemove(c: Ctx, flow: Tile[], amount: number, deep: boolean, 
 
 function planRoomba(c: Ctx, flow: Tile[], removed: number[]): number | undefined {
   if (!hasGlobal(c.p.perms, 'ROOMBA', c.s.rules)) return undefined;
-  const left = flow.filter(t => !removed.includes(t.id) && !TILES[t.kind].stay).sort((a, b) => trashScore(c, b) - trashScore(c, a))[0];
+  const left = flow.filter(t => !removed.includes(t.id) && !lockedOnBoard(t.kind, ownedTiles(c.p).length)).sort((a, b) => trashScore(c, b) - trashScore(c, a))[0];
   if (!left) return undefined;
   const fewLeft = ownedTiles(c.p).length - removed.length <= 5;
   return trashScore(c, left) >= 5 || fewLeft ? left.id : undefined;

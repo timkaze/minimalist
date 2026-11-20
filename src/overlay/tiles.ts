@@ -56,6 +56,12 @@ export interface TileDef {
   stack?: boolean;
   /** 手番の終わりに盤に残る（持ち物から外れ，そのマスの効果になり続ける）．排除できない */
   stay?: boolean;
+  /** 盤にあるあいだ（置いた手番のあいだ），排除の条件（理性n）を無視できる */
+  freeDrop?: boolean;
+  /** このタイルの上で止まったら，手番の終わりに決心チップをこの枚数もらう */
+  stopChip?: number;
+  /** 使い切り：置いた手番の終わりに市場へ戻る（持ち物から外れる．排除はできない．最後の1枚なら戻らない） */
+  oneShot?: boolean;
   /** 効果の補足（矢印と額・量で書けないもの） */
   note?: string;
 }
@@ -83,13 +89,19 @@ export const TILES: Record<OKind, TileDef> = {
   // v0.5：矢印のある量のタイルは「量を運ぶ」（盤にあるあいだ，止まったマスの量 +n）．置いたマスに量を残すだけでは，出ていくので使われなかった
   CALM:   t('CALM', '冷静', ['L'], rem(2), 3, { boost: 1 }),
   DOWN2:  t('DOWN2', '断捨離', ['D'], rem(2), 3, { boost: 1 }),
-  LIGHT:  t('LIGHT', '軽やか', ['D'], rem(0), 4, { note: `量は排除した枚数÷${LIGHT_PER}（最大${LIGHT_MAX}）` }),
+  // v0.6：勝者がほとんど使わなかった4種を作り直した（軽やか・気まま・ご褒美・大掃除）．チップが目標でしか増えないので，ガラクタ・ためらいを捨てる別の道として
+  //   軽やか：量＝排除した枚数÷3（コスト4）→ 盤にあるあいだ排除の条件を無視
+  LIGHT:  t('LIGHT', '軽やか', ['D'], rem(1), 3, { freeDrop: true, oneShot: true, note: '盤にあるあいだ（置いた手番のあいだ），排除の条件（理性n）を無視できる．使い切り' }),
   DRAG:   t('DRAG', '道連れ袋', ['D'], buy(2), 3, { drag: true, buyNeed: 1, note: '排除したとき，置いたタイルからもう1枚を重さ0で排除' }),
   MEMO:   t('MEMO', '思い出の品', ['U'], rem(3), 3, { heavy: 2, dropNeed: 2, boost: 2 }),
-  FREE:   t('FREE', '気まま', ['U', 'D', 'L', 'R'], buy(2), 5, { heavy: 2 }),
+  // 気まま：コスト5・重さ2 → コスト3・重さ1
+  FREE:   t('FREE', '気まま', ['U', 'D', 'L', 'R'], buy(2), 3),
   REST:   t('REST', 'ひと休み', [], rem(2), 3),
-  TREAT:  t('TREAT', 'ご褒美', [], buy(4), 3),
-  CLEAN:  t('CLEAN', '大掃除', [], rem(4), 5, { buyNeed: 2 }),
+  // ご褒美：額4（コスト3）→ 額2＋上で止まったら決心チップ1枚（コスト2）
+  TREAT:  t('TREAT', 'ご褒美', [], buy(2), 2, { stopChip: 1, oneShot: true, note: 'この上で止まったら，手番の終わりに決心チップを1枚もらう．使い切り' }),
+  // 大掃除：コスト5・衝動2 → コスト4・衝動1
+  // 使い切り：作り直しただけでは無理に買わせても勝率 16〜24%（ふつうのタイルは買うと袋に入り，あとで捨てる手間になる）．使ったら市場へ戻すことにした
+  CLEAN:  t('CLEAN', '大掃除', [], rem(4), 4, { buyNeed: 1, oneShot: true, note: '使い切り' }),
   // v0.5：ルンバ 5→6，大掃除の日 4→6（強いボット同士だと勝者の全員が持っていた）
   ROOMBA:   t('ROOMBA', 'ルンバ', [], NO_FX, 6, { perm: true, weight: 0, buyNeed: 1, note: '手番の終わりに，どこで止まっても置いたタイルから1枚を排除できる（条件・重さなし）' }),
   BIGDAY:   t('BIGDAY', '大掃除の日', [], NO_FX, 6, { perm: true, weight: 0, buyNeed: 2, note: '捨てるマスで止まったら，置いたタイルを何枚でも排除できる（量・重さを無視）' }),
@@ -108,6 +120,19 @@ export const TILES: Record<OKind, TileDef> = {
   KAKEIBO:  t('KAKEIBO', '家計簿', [], NO_FX, 2, { perm: true, weight: 0, calmNeed: 1, note: '排除できた手番でも，手番の終わりに決心チップを1枚もらう（上限は同じ）' }),
   SHELF:    t('SHELF', '収納棚', [], rem(2), 4, { stay: true, note: '手番の終わりに盤に残り（持ち物から外れる），そのマスがずっと量2になる．START・お気に入りのマス・棚のあるマスでは残らず捨て山へ．排除できない' }),
 };
+
+/** 置いたタイルのうち，pos のマスで一番上のもの（動かないタイルを引いて止まれば，そのタイル） */
+export const topAt = <T extends { kind: OKind; pos: { x: number; y: number } }>(placed: readonly T[], pos: { x: number; y: number }): T | undefined => {
+  for (let i = placed.length - 1; i >= 0; i--) if (placed[i].pos.x === pos.x && placed[i].pos.y === pos.y) return placed[i];
+  return undefined;
+};
+/** 排除の条件を無視できるか（手放す覚悟を持つ／軽やかが盤にある） */
+export const condFree = (perms: readonly OKind[], placed: readonly { kind: OKind }[]) => perms.includes('KOKOROE') || placed.some(c => TILES[c.kind].freeDrop);
+
+/** 置いたタイルとして排除できない（盤に残る棚，使い切り．使い切りは最後の1枚なら排除できる） */
+export const lockedOnBoard = (k: OKind, owned: number) => !!TILES[k].stay || (!!TILES[k].oneShot && owned > 1);
+/** 使い切りの文 */
+export const ONE_SHOT_TEXT = '使い切り（置いた手番の終わりに市場へ戻る．排除はできない．最後の1枚なら戻らない）';
 
 export const PERMS: OKind[] = ['ROOMBA', 'BIGDAY', 'BAG', 'COMPASS', 'KODAWARI'];
 export const isPerm = (k: OKind) => !!TILES[k].perm;

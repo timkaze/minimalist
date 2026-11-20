@@ -4,7 +4,7 @@
 //   点数：mean = あと何手番かの平均（小さいほど良い）／win = 相手の残り手番の分布も見た勝つ確率
 // 仕様：Memories/01_BoardGames/ミニマリスト_オーバーレイ版_ボット強化_仕様.md
 
-import { ALL_PERMS as PERMS, BUYABLE, Dir, FURN_KINDS, OKind, TILES, UNLIMITED_KINDS, isPerm } from './tiles';
+import { ALL_PERMS as PERMS, BUYABLE, Dir, FURN_KINDS, OKind, TILES, UNLIMITED_KINDS, isPerm, topAt } from './tiles';
 import {
   Env, Furn, MAX_CHIPS, OAction, OPlayer, OState, Placed, Pos, Rules, Tile, X_MAX, X_MIN, canBuyAt, canDraw, canDropAt, canMove, canPlaceFurn, chipNeed,
   dirsOf, discardLimit, GOAL_KINDS, goalReward, effectAt, envOf, exitPos, goalMet, goalNeed, hasGlobal, isDeep, isLastCard, ownedTiles, samePos, yMax, yMin,
@@ -149,6 +149,9 @@ class Turn {
     return v;
   }
 
+  /** 今見ている止まり方で，ご褒美の上にいてもらえる決心チップ（plan のあいだだけ） */
+  private stopChip = 0;
+
   /** 新しく達成した目標（ビット）でもらえる決心チップ */
   private gain(m: number): number {
     let n = 0;
@@ -164,7 +167,7 @@ class Turn {
       const dyn = ((nRemoved >= 4 ? GOAL_BIT.DUMP4 : 0) | (buyCost >= 5 ? GOAL_BIT.BIGBUY : 0)) & this.goalsOn & ~ext.g;
       if (dyn) ext = this.ext(ext.shelves, ext.furn, ext.g | dyn);
     }
-    let chips = this.chips - spent;
+    let chips = this.chips - spent + this.stopChip;
     if (this.rules.chips) {
       chips = Math.min(MAX_CHIPS, chips + this.gain(ext.g & ~this.g0)); // 目標を達成したぶん
       if (((this.rules.chipGain === 'idle' && nRemoved === 0) || this.hasKakeibo) && chips < MAX_CHIPS) chips++;
@@ -189,6 +192,13 @@ class Turn {
       }
     }
     if (added) { shelves = [...this.shelves0, ...added]; tag += 's' + added.map(posKey).join(';'); }
+    // 使い切り：排除できず，手番の終わりに持ち物から外れる（最後の1枚なら残る）
+    let owned = node.bagN + node.discN + node.placed.length;
+    for (const t of node.placed) {
+      if (!TILES[t.kind].oneShot || owned <= 1) continue;
+      const k = KIDX[t.kind];
+      pc[k]--; discP[k]--; owned--; tag += 'o';
+    }
     let eatenJunk = false;
     if (this.roombaPos) {
       const rp = this.roombaPos;
@@ -240,7 +250,7 @@ class Turn {
     for (const k of buy) {
       const e = b[k];
       if (!e) continue;
-      const have = (isPerm(k) ? 0 : this.owned[KIDX[k]]) + (got[k] ?? 0);
+      const have = (isPerm(k) ? 0 : this.owned[KIDX[k]] + (this.p.used?.filter(z => z === k).length ?? 0)) + (got[k] ?? 0); // 使い切ったぶんも持っていたと数える
       if (have < e.cap) v += e.v;
       got[k] = (got[k] ?? 0) + 1;
     }
@@ -331,6 +341,7 @@ class Turn {
 
   private removePlan(node: Node, st: Sit, bag: ArrayLike<number>, discP: number[], q: number, deep: boolean, discOk: number[], cache: boolean): Plan {
     const x = node.pos.x, rules = this.rules, pc = st.pc;
+    const nc = this.noCond || node.placed.some(c => TILES[c.kind].freeDrop); // 軽やかが盤にあれば条件なし
     const kinds: number[] = [];
     for (let k = 0; k < NK; k++) if (pc[k] > 0) kinds.push(k);
     // 置いたタイルの部分集合を全部（種類ごとの枚数）
@@ -349,7 +360,7 @@ class Turn {
         for (const k of kinds) {
           if (cur[k] >= pc[k]) continue;
           ts.push({ id: 0, kind: BAG_KINDS[k] });
-          const need = chipNeed(ts, [], x, q, rules, this.hasBigday, this.noCond);
+          const need = chipNeed(ts, [], x, q, rules, this.hasBigday, nc);
           if (need <= this.chips) {
             d[k]--; const v = this.finish(bag, d, this.permMask, need, st.base + ts.length, this.stock, st.ext, cache, cur[JUNK_K] > 0 || k === JUNK_K); d[k]++;
             if (v > bu) { bu = v; bk = k; }
@@ -363,7 +374,7 @@ class Turn {
     }
     const rec = (i: number) => {
       if (i === kinds.length) {
-        const need = chipNeed(tiles, [], x, q, rules, this.hasBigday, this.noCond);
+        const need = chipNeed(tiles, [], x, q, rules, this.hasBigday, nc);
         if (need > this.chips) return;
         const d = discP.slice();
         for (const k of kinds) d[k] -= flow[k];
@@ -386,7 +397,7 @@ class Turn {
     let best: Plan | null = null;
     for (const t of tops) {
       const fl = t.flow!, nFlow = sum(fl);
-      const need = chipNeed(BAG_KINDS.flatMap((k, i) => Array.from({ length: fl[i] }, () => ({ id: 0, kind: k }))), [], x, q, rules, this.hasBigday, this.noCond);
+      const need = chipNeed(BAG_KINDS.flatMap((k, i) => Array.from({ length: fl[i] }, () => ({ id: 0, kind: k }))), [], x, q, rules, this.hasBigday, nc);
       const d = discP.slice();
       for (let k = 0; k < NK; k++) d[k] -= fl[k];
       let plan = this.withRoomba(t, pc, fl, r => { d[r]--; const u = this.finish(bag, d, this.permMask, need, st.base + nFlow + 1, this.stock, st.ext, cache, fl[JUNK_K] > 0 || r === JUNK_K); d[r]++; return u; });
@@ -396,7 +407,7 @@ class Turn {
       for (let i = 0; i < limit; i++) {
         let bk = -1, bu = plan.u;
         for (let k = 0; k < NK; k++) {
-          if (left[k] < 1 || !canDropAt(BAG_KINDS[k], x, rules, this.noCond)) continue;
+          if (left[k] < 1 || !canDropAt(BAG_KINDS[k], x, rules, nc)) continue;
           d[k]--; const u = this.finish(bag, d, this.permMask, need, n + 1, this.stock, st.ext, cache, fl[JUNK_K] > 0 || plan.roomba === JUNK_K || dz[JUNK_K] > 0 || k === JUNK_K); d[k]++;
           if (u > bu) { bu = u; bk = k; }
         }
@@ -411,6 +422,13 @@ class Turn {
 
   /** 今のマスで止まったときの一番良い選び方．exact：実際に止まったあと（取得は全部の組み合わせを試す．運試しは引いた結果を使う） */
   plan(node: Node, exact: boolean, st: Sit = this.sit(node)): Plan {
+    const saved = this.stopChip;
+    const top = this.rules.chips ? topAt(node.placed, node.pos) : undefined;
+    this.stopChip = top ? TILES[top.kind].stopChip ?? 0 : 0;
+    try { return this.planAt(node, exact, st); } finally { this.stopChip = saved; }
+  }
+
+  private planAt(node: Node, exact: boolean, st: Sit): Plan {
     const { p, rules } = this;
     if (rules.lastCard && node.bagN === 0 && node.discN === 0 && node.placed.length === 1 && popcount(st.ext.g) >= this.need) {
       const fl = new Array(NK).fill(0); fl[KIDX[node.placed[0].kind]] = 1;

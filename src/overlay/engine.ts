@@ -4,7 +4,7 @@
 //   止まったマスの「一番上に見えている効果」（タイルがあればタイル，なければ盤の印刷）で取得か排除をする
 //   コマは無い．「今いるマス」は最後に置いたタイルの矢印の先（画面ではそのマスを光らせる）
 
-import { DELTA, DIRS, Dir, FURN_KINDS, Fx, GACHA_FX, GACHA_POOL, HES_FX, LIGHT_MAX, LIGHT_PER, MARKET, NO_FX, OKind, LUCKY_FX, TILES, UNLIMITED_KINDS, isPerm, startingBag, tileDirs, weightOf } from './tiles';
+import { DELTA, DIRS, Dir, FURN_KINDS, Fx, GACHA_FX, GACHA_POOL, HES_FX, MARKET, NO_FX, OKind, LUCKY_FX, TILES, UNLIMITED_KINDS, isPerm, startingBag, tileDirs, weightOf, condFree, topAt, lockedOnBoard } from './tiles';
 import { nextRandom } from '../engine/rng';
 import { shuffle } from '../engine/rng';
 
@@ -192,7 +192,6 @@ export const canPlaceFurn = (pos: Pos, b: OBoard, furn: Furn[], fixed: Placed[])
 /** タイルを置いたマスの効果 */
 export function tileFx(kind: OKind, env: Pick<Env, 'rules' | 'removed'>): Fx {
   if (kind === 'HES') return env.rules.hes === 'second' ? HES_FX : NO_FX;
-  if (kind === 'LIGHT') return { kind: 'remove', amount: Math.min(LIGHT_MAX, Math.floor(env.removed / LIGHT_PER)) };
   return TILES[kind].fx;
 }
 
@@ -292,6 +291,8 @@ export interface OPlayer {
   removed: number;
   /** 排除したタイル（終了時に見せる．古い保存データには無い） */
   gone?: Tile[];
+  /** 使い切って市場へ戻したタイル（種類）．排除の数には入らない */
+  used?: OKind[];
   bought: number;
   finished: boolean;
   /** 決心チップ */
@@ -484,10 +485,11 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
   if (fromDiscard.some(c => p.rollIds?.includes(c.id))) throw new ORuleError('運試しで表にしたタイルは排除できません');
   const lastOne = s.rules.lastCard && isLastCard(p) && fromFlow.length === 1 && !fromDiscard.length;
   if (!lastOne && [...fromFlow, ...fromDiscard].some(c => TILES[c.kind].stay)) throw new ORuleError('盤に残るタイルは排除できません');
+  if (ownedTiles(p).length > 1 && fromFlow.some(c => TILES[c.kind].oneShot)) throw new ORuleError('使い切りのタイルは排除できません（手番の終わりに市場へ戻ります）');
   const deep = isDeep(pos.y, s.board);
   if (fromDiscard.length > (power.kind === 'remove' ? discardLimit(p, power.amount, deep) : 0)) throw new ORuleError('捨て山から排除できる枚数を超えています');
   let spend = 0;
-  const noCond = p.perms.includes('KOKOROE');
+  const noCond = condFree(p.perms, p.placed);
   const last = s.rules.lastCard && isLastCard(p) && fromFlow.length === 1 && !fromDiscard.length;
   if (!last) {
     if (power.kind !== 'remove' && ids.length) throw new ORuleError('量のマスでしか排除できません');
@@ -501,7 +503,7 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
   }
   if (a.roomba !== undefined && a.roomba !== null) {
     if (!hasGlobal(p.perms, 'ROOMBA', s.rules)) throw new ORuleError('ルンバを持っていません');
-    if (!p.placed.some(c => c.id === a.roomba && !TILES[c.kind].stay) || ids.includes(a.roomba)) throw new ORuleError('ルンバで排除できるのは置いたタイルの1枚です');
+    if (!p.placed.some(c => c.id === a.roomba && !lockedOnBoard(c.kind, ownedTiles(p).length)) || ids.includes(a.roomba)) throw new ORuleError('ルンバで排除できるのは置いたタイルの1枚です');
   }
   // 盤に置くお気に入りの置き場所を決める（先に確かめる）
   const furn = (p.furn ??= []), fixed = (p.fixed ??= []);
@@ -542,6 +544,8 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
   }
   furn.push(...newFurn);
   (p.gone ??= []).push(...[...p.placed, ...p.discard].filter(c => gone.has(c.id)).map(c => ({ id: c.id, kind: c.kind })));
+  // ご褒美：その上で止まったら決心チップ（排除で消える前に見る）
+  const top = topAt(p.placed, pos), treat = s.rules.chips && top ? TILES[top.kind].stopChip ?? 0 : 0;
   p.placed = p.placed.filter(c => !gone.has(c.id));
   p.discard = p.discard.filter(c => !gone.has(c.id));
   p.removed += gone.size;
@@ -571,6 +575,7 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
     if (s.rules.chips) p.chips = Math.min(MAX_CHIPS, (p.chips ?? 0) + gain);
     parts.push(`目標達成「${hit.map(k => GOALS[k].name).join('」「')}」${s.rules.chips ? '（決心チップ+' + gain + '）' : ''}`);
   }
+  if (treat && p.chips < MAX_CHIPS) { p.chips = Math.min(MAX_CHIPS, p.chips + treat); parts.push(`ご褒美（決心チップ+${treat}）`); }
   if (eaten) parts.push('ルンバが1枚吸い込んだ');
   for (const f of newFurn) parts.push(`${TILES[f.kind].name}を(${f.pos.x},${f.pos.y})に置いた`);
   s.log.push(parts.join(' / '));
@@ -591,6 +596,14 @@ function endTurn(s: OState, p: OPlayer): void {
     if (ownedTiles(p).length === 1 && (p.goals?.length ?? 0) < goalNeed(s.rules)) return true; // 目標が足りないうちは，最後の1枚は棚としても残せない
     fixed.push({ id: c.id, kind: c.kind, pos: { ...c.pos } });
     s.log.push(`${p.name}：${TILES[c.kind].name}が(${c.pos.x},${c.pos.y})に残った`);
+    return false;
+  });
+  // 使い切り：市場へ戻る（最後の1枚なら戻らない）
+  p.placed = p.placed.filter(c => {
+    if (!TILES[c.kind].oneShot || ownedTiles(p).length <= 1) return true;
+    if (s.market[c.kind] !== undefined && !UNLIMITED_KINDS.includes(c.kind)) s.market[c.kind]!++;
+    (p.used ??= []).push(c.kind);
+    s.log.push(`${p.name}：${TILES[c.kind].name}を使い切った（市場へ）`);
     return false;
   });
   // 盤のタイルを全部はがして捨て山へ

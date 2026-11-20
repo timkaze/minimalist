@@ -2,7 +2,7 @@
 //   コマは描かない．「今止めるとどのマスの効果になるか」を盤（光るマス）とパネルに常に出す
 
 import './ui.css';
-import { ARROW, Dir, Fx, MARKET, OKind, TILES, TILE_SETS, UNLIMITED_KINDS, carryText, dirsText, fxText, marketFromChoice, startingBag, tileDirs, weightOf } from './tiles';
+import { ARROW, Dir, Fx, MARKET, OKind, TILES, TILE_SETS, UNLIMITED_KINDS, carryText, dirsText, fxText, marketFromChoice, startingBag, tileDirs, weightOf, condFree, ONE_SHOT_TEXT, lockedOnBoard } from './tiles';
 import { OMAX_SEATS, ORoomInfo, OServerMsg } from './protocol';
 import {
   DEFAULT_RULES, GOALS, OAction, OBOARDS, OPlayer, OState, Pos, Rules, Tile, X_MAX, X_MIN, applyOverlay, goalNeed, goalReward, canBuyAt, canDraw, canDropAt, canMove,
@@ -104,8 +104,11 @@ function tileHTML(kind: OKind, o: { fx?: Fx; cls?: string; attr?: string; seq?: 
   const fx = o.fx ?? (s ? tileFx(kind, { rules: s.rules, removed: me >= 0 ? s.players[me].removed : 0 }) : kind === 'HES' && rules.hes === 'second' ? { kind: 'buy' as const, amount: 3 } : d.fx);
   const center = d.perm ? '<span class="fx">★</span>'
     : fx.kind === 'none' ? '<span class="fx none">–</span>'
-    : `<span class="fx"><small>${fx.kind === 'buy' ? '額' : '量'}</small>${kind === 'LIGHT' && !s ? '?' : fx.amount}</span>`;
-  const carry = d.boost && rules.carry ? `<span class="c-carry" title="盤にあるあいだ，止まったマスの量 +${d.boost}">運ぶ+${d.boost}</span>` : '';
+    : `<span class="fx"><small>${fx.kind === 'buy' ? '額' : '量'}</small>${fx.amount}</span>`;
+  const carry = d.boost && rules.carry ? `<span class="c-carry" title="盤にあるあいだ，止まったマスの量 +${d.boost}">運ぶ+${d.boost}</span>`
+    : d.freeDrop && rules.needs ? '<span class="c-carry" title="盤にあるあいだ，排除の条件（理性n）を無視">条件なし</span>'
+    : d.stopChip && rules.chips ? `<span class="c-carry" title="この上で止まったら決心チップ+${d.stopChip}">止まると◆+${d.stopChip}</span>` : '';
+  const once = d.oneShot ? `<span class="c-once" title="${ONE_SHOT_TEXT}">使い切り</span>` : '';
   const tl = o.seq ? `<span class="seq">${o.seq}</span>` : o.cost && d.cost !== null ? `<span class="c-cost" title="取得コスト">${d.cost}</span>` : '';
   const tr = (o.stack ?? 0) > 1 ? `<span class="stk">${o.stack}枚</span>` : (o.count ?? 0) > 1 ? `<span class="cnt">×${o.count}</span>`
     : o.cost && rules.needs && d.buyNeed ? `<span class="c-imp" title="衝動${d.buyNeed}以上の列で取得">衝${d.buyNeed}</span>`
@@ -113,7 +116,7 @@ function tileHTML(kind: OKind, o: { fx?: Fx; cls?: string; attr?: string; seq?: 
   const bl = d.perm ? '' : `<span class="c-w" title="捨てる重さ">重${weightOf(kind, rules)}</span>`;
   const br = rules.needs && d.dropNeed ? `<span class="c-calm" title="理性${d.dropNeed}以上の列で排除">理${d.dropNeed}</span>` : '';
   return `<div class="tile k-${d.perm ? 'perm' : fx.kind} ${dirs.length || d.perm ? '' : 'stay'} ${o.cls ?? ''}" ${o.attr ?? ''} title="${esc(tileTitle(kind))}">
-    ${dirs.map(x => `<i class="ar ${x}"></i>`).join('')}${center}${carry}<span class="nm">${d.name}</span>${tl}${tr}${bl}${br}</div>`;
+    ${dirs.map(x => `<i class="ar ${x}"></i>`).join('')}${center}${carry}${once}<span class="nm">${d.name}</span>${tl}${tr}${bl}${br}</div>`;
 }
 
 function tileTitle(kind: OKind): string {
@@ -549,7 +552,7 @@ function controlsHTML(): string {
           <div class="btns"><button id="lastdrop" class="primary big">手放す</button> <button id="resolve">手放さない</button></div>`;
       }
       const rb = p.perms.includes('ROOMBA') && p.placed.length
-        ? `<p>★ルンバ：置いたタイルから1枚排除できる（条件・重さなし）</p><div class="chips pickable">${p.placed.filter(c => !sel.remove.has(c.id)).map(c => tileHTML(c.kind, { attr: `data-rb="${c.id}"`, cls: sel.roomba === c.id ? 'on' : '' })).join('')}</div>` : '';
+        ? `<p>★ルンバ：置いたタイルから1枚排除できる（条件・重さなし）</p><div class="chips pickable">${p.placed.filter(c => !sel.remove.has(c.id) && !lockedOnBoard(c.kind, ownedTiles(p).length)).map(c => tileHTML(c.kind, { attr: `data-rb="${c.id}"`, cls: sel.roomba === c.id ? 'on' : '' })).join('')}</div>` : '';
       if (here.kind === 'buy') {
         const total = sel.buy.reduce((n, k) => n + (TILES[k].cost ?? 0), 0);
         return `<p><b class="cb">額 ${here.amount}</b>：取得するタイルを選んでください　<span class="meter ${total > here.amount ? 'over' : ''}">使用 ${total} / ${here.amount}</span></p>
@@ -563,10 +566,10 @@ function controlsHTML(): string {
         const dn = discardLimit(p, here.amount, isDeep(p.pos.y, st.board));
         const discSel = p.discard.filter(c => sel.remove.has(c.id));
         const have = st.rules.chips ? p.chips ?? 0 : 0;
-        const noCond = p.perms.includes('KOKOROE');
+        const noCond = condFree(p.perms, p.placed);
         const need = chipNeed(flowSel, discSel, p.pos.x, here.amount, st.rules, big, noCond);
         const chipLine = st.rules.chips ? `<p class="chipline">決心チップ <b>${'◆'.repeat(have) || 'なし'}</b>${have ? `　1枚で「重さ1の肩代わり」か「理性の条件1段階の免除」．<span class="meter ${need > have ? 'over' : ''}">使用 ${need} / ${have}</span>` : '（1枚も排除できなかった手番の終わりに1枚もらえます）'}</p>` : '';
-        const pick = (c: Tile) => (canDropAt(c.kind, p.pos.x, st.rules, noCond) || have > 0) && sel.roomba !== c.id
+        const pick = (c: Tile) => !(p.placed.includes(c as never) && lockedOnBoard(c.kind, ownedTiles(p).length)) && (canDropAt(c.kind, p.pos.x, st.rules, noCond) || have > 0) && sel.roomba !== c.id
           ? tileHTML(c.kind, { attr: `data-rm="${c.id}"`, cls: sel.remove.has(c.id) ? 'on' : '' }) : tileHTML(c.kind, { cls: 'no' });
         return `${p.roll != null ? `<p><b class="cg">運試し</b>：袋に当たりチップを混ぜて，当たりが出るまでに <b>${p.roll}</b> 枚を表にした → <b class="cr">量 ${p.roll}</b></p><div class="chips rolled">${(p.rollKinds ?? []).map(k => tileHTML(k, { cls: 'chip' })).join('')}<span class="hit">当たり</span></div><p class="muted">表にしたタイルは排除の対象になりません（捨て山へ送りました）</p>` : ''}<p><b class="cr">量 ${here.amount}</b>：この手番に置いたタイルから排除するものを選んでください　<span class="meter ${load > here.amount ? 'over' : ''}">${big ? '★大掃除の日：何枚でも' : `重さ ${load} / ${here.amount}`}</span></p>
           ${chipLine}<div class="chips pickable">${p.placed.map(pick).join('')}</div>
