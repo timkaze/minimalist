@@ -1,0 +1,11 @@
+== v06_drop: OV_TILES= RULES={"dropChips":true} SET=all
+特徴量 114，装置 cuda，出力 /home/tomida/git/minimalist-online/training/overlay-runs/fit_exp_v06_drop
+[1] データ 112875行（作成 253秒，終わらなかった人 4.1%）学習 2秒  検証 CE 1.828  手番数の誤差 2.74（平均で当てた場合 6.97）
+[2] データ 235866行（作成 247秒，終わらなかった人 9.2%）学習 2秒  検証 CE 1.895  手番数の誤差 3.50（平均で当てた場合 8.30）
+[3] データ 350081行（作成 250秒，終わらなかった人 5.2%）学習 3秒  検証 CE 1.866  手番数の誤差 3.43（平均で当てた場合 8.22）
+[4] データ 462865行（作成 243秒，終わらなかった人 5.1%）学習 4秒  検証 CE 1.866  手番数の誤差 3.44（平均で当てた場合 7.95）
+保存 /home/tomida/git/minimalist-online/training/overlay-runs/exp_v06_drop/value_last.json（計 1004秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/minimalist-online/training/overlay-runs/fit_exp_v06_drop
+[refit] データ 462865行  検証 CE 1.856  手番数の誤差 3.31（平均で当てた場合 7.95）
+保存 /home/tomida/git/minimalist-online/training/overlay-runs/exp_v06_drop/value.json
+== done v06_drop
