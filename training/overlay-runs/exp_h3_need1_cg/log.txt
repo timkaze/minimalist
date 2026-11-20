@@ -1,0 +1,12 @@
+== h3_need1_cg: OV_TILES= RULES={"hesCount":3,"goals":"need1","chipGain":"goal"} SET=all
+特徴量 114，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_h3_need1_cg
+[1] データ 131696行（作成 218秒，終わらなかった人 12.5%）学習 2秒  検証 CE 1.816  手番数の誤差 4.47（平均で当てた場合 11.00）
+[2] データ 292051行（作成 412秒，終わらなかった人 33.0%）学習 3秒  検証 CE 1.792  手番数の誤差 6.72（平均で当てた場合 14.00）
+[3] データ 424823行（作成 239秒，終わらなかった人 9.0%）学習 4秒  検証 CE 1.857  手番数の誤差 6.14（平均で当てた場合 12.96）
+[4] データ 549618行（作成 222秒，終わらなかった人 6.3%）学習 5秒  検証 CE 1.889  手番数の誤差 5.64（平均で当てた場合 11.99）
+[5] データ 673302行（作成 234秒，終わらなかった人 5.8%）学習 6秒  検証 CE 1.905  手番数の誤差 5.23（平均で当てた場合 11.26）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_h3_need1_cg/value_last.json（計 1345秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/minimalist-exp/training/overlay-runs/fit_exp_h3_need1_cg
+[refit] データ 673302行  検証 CE 1.902  手番数の誤差 5.21（平均で当てた場合 11.26）
+保存 /home/tomida/git/minimalist-exp/training/overlay-runs/exp_h3_need1_cg/value.json
+== done h3_need1_cg
