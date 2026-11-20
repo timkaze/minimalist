@@ -3,7 +3,9 @@ import { OKind, TILES } from '../src/overlay/tiles';
 import { OState, Rules, applyOverlay, hereFx, isDone, newOverlayGame, ownedTiles, printedFx, OBOARDS, DEFAULT_RULES } from '../src/overlay/engine';
 import { OPRESETS, playOverlayTurn, resolveBot } from '../src/overlay/bot';
 
-const game = (rules: Partial<Rules> = {}) => newOverlayGame([{ name: 'A' }, { name: 'B' }], 1, { rules });
+/** 個々の仕組みを確かめるための土台（v0.5.1 までの既定．今の既定はためらい3枚・目標1つ必須・チップは目標でだけ…） */
+const BASE: Partial<Rules> = { hesCount: 2, goals: 'off', chipGain: 'idle', chipStart: 'none', goalChips: 'one' };
+const game = (rules: Partial<Rules> = {}) => newOverlayGame([{ name: 'A' }, { name: 'B' }], 1, { rules: { ...BASE, ...rules } });
 /** 現在の手番の人の袋を，引く順に指定する */
 function stack(s: OState, ...kinds: OKind[]) {
   const p = s.players[s.current];

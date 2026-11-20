@@ -158,7 +158,7 @@ const RULE_OPTS: { key: keyof Rules; label: string; choices: [string, string][] 
   { key: 'midBuy', label: '中央の行（START の左右）', choices: [['true', '額2（ためらいの最低保証）'], ['false', '効果なし']] },
   { key: 'weights', label: '捨てる重さ', choices: [['heavy', '重い（欲しい2・↑へ行くタイル2・ガラクタ2）'], ['light', '軽い（ガラクタ2，ほかは1）']] },
   { key: 'chipGain', label: '決心チップのもらい方', choices: [['idle', '排除できなかった手番に1枚（目標の達成でも1枚）'], ['goal', '目標の達成でだけ（目標のルールと一緒に）']] },
-  { key: 'chipStart', label: 'はじめの決心チップ', choices: [['none', 'なし'], ['one', '全員1枚'], ['seat', '手番順に0・1・2…枚（後の手番ほど多い）']] },
+  { key: 'chipStart', label: 'はじめの決心チップ', choices: [['none', 'なし'], ['one', '全員1枚'], ['seat', '手番順に0・1・2・2枚（後の手番ほど多い）']] },
   { key: 'goalChips', label: '目標のごほうび', choices: [['one', 'どれも決心チップ1枚'], ['tiered', '難しさに応じて1〜3枚（目標に書いてある）']] },
   { key: 'chips', label: '決心チップ', choices: [['true', 'あり（排除できなかった手番に1枚．重さ1か条件1段階に使える）'], ['false', 'なし']] },
   { key: 'junk', label: 'ガラクタの矢印', choices: [['right', '→だけ'], ['four', '4方向']] },
@@ -176,7 +176,7 @@ const RULE_OPTS: { key: keyof Rules; label: string; choices: [string, string][] 
 ];
 
 function savedRules(): Rules {
-  try { return normRules(JSON.parse(store.get('rules3') ?? '{}')); } catch { return { ...DEFAULT_RULES }; }
+  try { return normRules(JSON.parse(store.get('rules4') ?? '{}')); } catch { return { ...DEFAULT_RULES }; }
 }
 /** 開始画面で今選んでいるルール（画面に無ければ保存してあるもの） */
 function readRulesDraft(): Rules {
@@ -218,10 +218,10 @@ function bindOptions() {
     app.querySelector<HTMLElement>('#startbagBody')!.innerHTML = startingBag(readRulesDraft().hesCount).map(([k, n]) => infoHTML(k, '', n)).join('');
   };
   setSel.onchange = () => { store.set('set', setSel.value); info(); };
-  app.querySelectorAll<HTMLSelectElement>('select[data-rule]').forEach(x => x.onchange = () => { store.set('rules3', JSON.stringify(readRulesDraft())); info(); });
+  app.querySelectorAll<HTMLSelectElement>('select[data-rule]').forEach(x => x.onchange = () => { store.set('rules4', JSON.stringify(readRulesDraft())); info(); });
   app.querySelectorAll<HTMLInputElement>('#custom input').forEach(x => x.onchange = () =>
     store.set('tiles', [...app.querySelectorAll<HTMLInputElement>('#custom input:checked')].map(y => y.value).join(',')));
-  app.querySelector<HTMLButtonElement>('#resetRules')!.onclick = () => { store.set('rules3', JSON.stringify(DEFAULT_RULES)); render(); };
+  app.querySelector<HTMLButtonElement>('#resetRules')!.onclick = () => { store.set('rules4', JSON.stringify(DEFAULT_RULES)); render(); };
   info();
 }
 
@@ -231,7 +231,7 @@ function readOptions(): { rules: Rules; set: string; tiles?: OKind[]; market: OK
   const tiles = [...app.querySelectorAll<HTMLInputElement>('#custom input:checked')].map(x => x.value as OKind);
   let market: OKind[];
   try { market = marketFromChoice(set === 'custom' ? tiles : set); } catch (e) { alert((e as Error).message); return null; }
-  store.set('rules3', JSON.stringify(rules));
+  store.set('rules4', JSON.stringify(rules));
   store.set('set', set);
   if (set === 'custom') store.set('tiles', tiles.join(','));
   return { rules, set, tiles: set === 'custom' ? tiles : undefined, market };
@@ -248,7 +248,7 @@ function rulesHTML() {
     <li>特別なマス：捨欲の領域にも<b class="cb">額</b>のマスが点々とある（量のタイルで塗り替えられる）．<b>福袋</b>は共有の福袋からくじで1枚もらう．<b>運試し</b>は，自分の袋（まだ引いていないタイル）に当たりチップを混ぜ，当たりが出るまでタイルを表にする．表にした枚数がそのまま量になる（そのあとは量のマスと同じ）．表にしたタイルは排除の対象にならず，捨て山へ送る</li>
     <li><b class="cr">運ぶ +n</b> と書いたタイル（冷静・断捨離・思い出の品）は，<b>盤にあるあいだ</b>（置いた手番のあいだ），止まったマスの<b class="cr">量</b>を +n します．何枚でも重なる．たくさん置いてから量のマスで止まるほど，まとめて捨てられます（ルールで外せます）</li>
     <li>タイルの四隅：左上＝コスト，右上＝取得の条件（衝n＝衝動n以上の列），左下＝捨てる重さ，右下＝排除の条件（理n＝理性n以上の列）</li>
-    <li><b>決心チップ</b>（◆）：${R().chipGain === 'goal' ? '目標を達成したときに1枚もらう（3枚まで）．' : '1枚も排除できなかった手番の終わりに1枚もらう（3枚まで）．'}${R().chipStart === 'one' ? 'はじめに全員1枚持つ．' : R().chipStart === 'seat' ? 'はじめに手番順で0・1・2…枚持つ（後の手番ほど多い）．' : ''}量のマスで排除するとき，1枚で「重さ1の肩代わり」か「理性の条件1段階の免除」に使える．足りない分だけ自動で使う</li>
+    <li><b>決心チップ</b>（◆）：${R().chipGain === 'goal' ? '目標を達成したときに1枚もらう（3枚まで）．' : '1枚も排除できなかった手番の終わりに1枚もらう（3枚まで）．'}${R().chipStart === 'one' ? 'はじめに全員1枚持つ．' : R().chipStart === 'seat' ? 'はじめに手番順で0・1・2・2枚持つ（後の手番ほど多い）．' : ''}量のマスで排除するとき，1枚で「重さ1の肩代わり」か「理性の条件1段階の免除」に使える．足りない分だけ自動で使う</li>
     <li>高いものは<b>衝動の列でないと取得できない</b>，思い入れのあるものは<b>理性の列でないと排除できない</b>（タイルの説明に書いてあります）</li>
     <li>★お気に入りは取得したら自分の前に置き，効果がずっと続きます（袋に入らない．各1枚）</li>
     ${R().lastCard ? '' : '<li><b>最後の1枚も，量のマスで排除</b>しないと達成になりません（重さ・条件もふつうどおり．決心チップは使えます）．↑や→のタイルが最後に残ると捨てに行けないので，終わり方を考えて残すタイルを選びます</li>'}

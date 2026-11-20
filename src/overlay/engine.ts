@@ -73,12 +73,12 @@ export interface Rules {
   goals: 'off' | 'bonus' | 'need1' | 'need2';
   /** 決心チップのもらい方：idle = 1枚も排除できなかった手番の終わりに1枚（目標の達成でも1枚）／goal = 目標の達成でだけもらう（家計簿は別） */
   chipGain: 'idle' | 'goal';
-  /** はじめに持つ決心チップ：none = 0枚／one = 全員1枚／seat = 手番順に 0, 1, 2, …枚（後の手番ほど多い．3枚まで） */
+  /** はじめに持つ決心チップ：none = 0枚／one = 全員1枚／seat = 手番順に 0, 1, 2, 2枚（後の手番ほど多い．2枚まで．3枚だと4人戦の4番手が勝ちすぎた） */
   chipStart: 'none' | 'one' | 'seat';
   /** 目標のごほうび：one = どれも1枚／tiered = 難しさに応じて1〜3枚 */
   goalChips: 'one' | 'tiered';
 }
-export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 2, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: false, goals: 'off', chipGain: 'idle', chipStart: 'none', goalChips: 'one' };
+export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 3, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: false, goals: 'need1', chipGain: 'goal', chipStart: 'seat', goalChips: 'tiered' };
 
 /** 外から来たルールを整える（不正な値は既定に） */
 export function normRules(r: Partial<Rules> | undefined | null): Rules {
@@ -102,9 +102,9 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
     bigBag: bool(x.bigBag, d.bigBag),
     carry: bool(x.carry, d.carry),
     favOne: bool(x.favOne, d.favOne),
-    chipGain: x.chipGain === 'goal' ? 'goal' : 'idle',
-    chipStart: x.chipStart === 'one' || x.chipStart === 'seat' ? x.chipStart : 'none',
-    goalChips: x.goalChips === 'tiered' ? 'tiered' : 'one',
+    chipGain: x.chipGain === 'goal' || x.chipGain === 'idle' ? x.chipGain : d.chipGain,
+    chipStart: x.chipStart === 'none' || x.chipStart === 'one' || x.chipStart === 'seat' ? x.chipStart : d.chipStart,
+    goalChips: x.goalChips === 'tiered' || x.goalChips === 'one' ? x.goalChips : d.goalChips,
     goals: x.goals === 'bonus' || x.goals === 'need1' || x.goals === 'need2' || x.goals === 'off' ? x.goals : d.goals,
   };
 }
@@ -129,7 +129,7 @@ export const GOAL_KINDS = Object.keys(GOALS) as GoalKind[];
 /** 目標1つを達成したときにもらえる決心チップ */
 export const goalReward = (k: GoalKind, rules: Rules) => (rules.goalChips === 'tiered' ? GOALS[k].chips : 1);
 /** はじめに持つ決心チップ（seat 番目の手番の人） */
-export const startChips = (seat: number, rules: Rules) => (!rules.chips ? 0 : rules.chipStart === 'one' ? 1 : rules.chipStart === 'seat' ? Math.min(MAX_CHIPS, seat) : 0);
+export const startChips = (seat: number, rules: Rules) => (!rules.chips ? 0 : rules.chipStart === 'one' ? 1 : rules.chipStart === 'seat' ? Math.min(2, seat) : 0);
 /** 1試合でめくる目標の数 */
 export const GOAL_PICK = 3;
 /** 最後の1枚を排除するのに必要な達成数 */

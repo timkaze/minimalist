@@ -5,7 +5,9 @@ import { OPRESETS, chooseOverlayAction, playOverlayTurn } from '../src/overlay/b
 import { chooseSearchAction } from '../src/overlay/search';
 import { BINS, FEAT_VERSION, NFEAT, ValueJson, ValueModel, featNames } from '../src/overlay/value';
 
-const game = (rules: Partial<Rules> = {}, market?: OKind[]) => newOverlayGame([{ name: 'A' }, { name: 'B' }], 1, { rules, market });
+/** 個々の仕組みを確かめるための土台（v0.5.1 までの既定．今の既定はためらい3枚・目標1つ必須・チップは目標でだけ…） */
+const BASE: Partial<Rules> = { hesCount: 2, goals: 'off', chipGain: 'idle', chipStart: 'none', goalChips: 'one' };
+const game = (rules: Partial<Rules> = {}, market?: OKind[]) => newOverlayGame([{ name: 'A' }, { name: 'B' }], 1, { rules: { ...BASE, ...rules }, market });
 /** 現在の手番の人の袋を，引く順に指定する */
 function stack(s: OState, ...kinds: OKind[]) {
   const p = s.players[s.current];
@@ -149,6 +151,14 @@ describe('理性のお気に入り（試作）とお気に入りの在庫', () =
 });
 
 describe('目標', () => {
+  it('今の既定：ためらい3枚・目標1つ必須・チップは目標でだけ（難しさ別）・はじめのチップは手番順', () => {
+    const s = newOverlayGame([{ name: 'A' }, { name: 'B' }], 1);
+    expect(s.goals!.length).toBe(3);
+    expect(s.players[0].bag.filter(t => t.kind === 'HES').length).toBe(3);
+    expect(s.players.map(p => p.chips)).toEqual([0, 1]);
+    expect(s.rules).toMatchObject({ goals: 'need1', chipGain: 'goal', goalChips: 'tiered' });
+  });
+
   it('3枚めくられ，止まり方が条件を満たすと達成して決心チップをもらう', () => {
     const s = game({ goals: 'bonus' });
     expect(s.goals!.length).toBe(3);
@@ -193,9 +203,9 @@ describe('目標', () => {
 
   it('chipStart：はじめの決心チップ（全員1枚／手番順に0・1・2…枚）', () => {
     const n = (rules: Partial<Rules>, k: number) => newOverlayGame(Array.from({ length: k }, (_, i) => ({ name: `P${i}` })), 1, { rules }).players.map(p => p.chips);
-    expect(n({}, 3)).toEqual([0, 0, 0]);
+    expect(n({ chipStart: 'none' }, 3)).toEqual([0, 0, 0]);
     expect(n({ chipStart: 'one' }, 3)).toEqual([1, 1, 1]);
-    expect(n({ chipStart: 'seat' }, 4)).toEqual([0, 1, 2, 3]);
+    expect(n({ chipStart: 'seat' }, 4)).toEqual([0, 1, 2, 2]);
     expect(n({ chipStart: 'seat', chips: false }, 2)).toEqual([0, 0]);
   });
 
