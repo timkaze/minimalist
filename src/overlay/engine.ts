@@ -73,8 +73,12 @@ export interface Rules {
   goals: 'off' | 'bonus' | 'need1' | 'need2';
   /** 決心チップのもらい方：idle = 1枚も排除できなかった手番の終わりに1枚（目標の達成でも1枚）／goal = 目標の達成でだけもらう（家計簿は別） */
   chipGain: 'idle' | 'goal';
+  /** はじめに持つ決心チップ：none = 0枚／one = 全員1枚／seat = 手番順に 0, 1, 2, …枚（後の手番ほど多い．3枚まで） */
+  chipStart: 'none' | 'one' | 'seat';
+  /** 目標のごほうび：one = どれも1枚／tiered = 難しさに応じて1〜3枚 */
+  goalChips: 'one' | 'tiered';
 }
-export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 2, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: false, goals: 'off', chipGain: 'idle' };
+export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 2, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: false, goals: 'off', chipGain: 'idle', chipStart: 'none', goalChips: 'one' };
 
 /** 外から来たルールを整える（不正な値は既定に） */
 export function normRules(r: Partial<Rules> | undefined | null): Rules {
@@ -99,6 +103,8 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
     carry: bool(x.carry, d.carry),
     favOne: bool(x.favOne, d.favOne),
     chipGain: x.chipGain === 'goal' ? 'goal' : 'idle',
+    chipStart: x.chipStart === 'one' || x.chipStart === 'seat' ? x.chipStart : 'none',
+    goalChips: x.goalChips === 'tiered' ? 'tiered' : 'one',
     goals: x.goals === 'bonus' || x.goals === 'need1' || x.goals === 'need2' || x.goals === 'off' ? x.goals : d.goals,
   };
 }
@@ -107,18 +113,23 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
 
 // 強いボット同士で測って，ほぼ自動で達成されたものは直した：遠出 5枚→7枚（98%），まとめて手放す 3枚→4枚（81%），「ガラクタを排除する」は外した（90%）
 export type GoalKind = 'DUMP4' | 'BIGBUY' | 'CALM3' | 'IMP3' | 'WALK7' | 'BOTTOM' | 'TOP' | 'LUCK' | 'PILE3';
-export const GOALS: Record<GoalKind, { name: string; text: string }> = {
-  DUMP4:  { name: 'まとめて手放す', text: '1手番に4枚以上排除する' },
-  BIGBUY: { name: '大きな買い物', text: '1手番に合計コスト5以上を取得する' },
-  CALM3:  { name: '理性の果て', text: '理性3の列で止まる' },
-  IMP3:   { name: '衝動の果て', text: '衝動3の列で止まる' },
-  WALK7:  { name: '遠出', text: '1手番に7枚以上置いて止まる' },
-  BOTTOM: { name: 'どん底', text: '一番下の行で止まる' },
-  TOP:    { name: 'てっぺん', text: '一番上の行で止まる' },
-  LUCK:   { name: '運だめし', text: '福袋か運試しのマスで止まる' },
-  PILE3:  { name: '積み重ね', text: '3枚以上重なったマスで止まる' },
+export const GOALS: Record<GoalKind, { name: string; text: string; chips: number }> = {
+  DUMP4:  { name: 'まとめて手放す', text: '1手番に4枚以上排除する', chips: 1 },
+  BIGBUY: { name: '大きな買い物', text: '1手番に合計コスト5以上を取得する', chips: 1 },
+  CALM3:  { name: '理性の果て', text: '理性3の列で止まる', chips: 2 },
+  IMP3:   { name: '衝動の果て', text: '衝動3の列で止まる', chips: 2 },
+  WALK7:  { name: '遠出', text: '1手番に7枚以上置いて止まる', chips: 1 },
+  BOTTOM: { name: 'どん底', text: '一番下の行で止まる', chips: 1 },
+  TOP:    { name: 'てっぺん', text: '一番上の行で止まる', chips: 2 },
+  LUCK:   { name: '運だめし', text: '福袋か運試しのマスで止まる', chips: 1 },
+  PILE3:  { name: '積み重ね', text: '3枚以上重なったマスで止まる', chips: 3 },
 };
 export const GOAL_KINDS = Object.keys(GOALS) as GoalKind[];
+// 難しさ（tiered のごほうび）は強いボットの達成率から：目標を追う必要がないときに 6割を超えるものは1枚，ほとんど達成されないものは2〜3枚
+/** 目標1つを達成したときにもらえる決心チップ */
+export const goalReward = (k: GoalKind, rules: Rules) => (rules.goalChips === 'tiered' ? GOALS[k].chips : 1);
+/** はじめに持つ決心チップ（seat 番目の手番の人） */
+export const startChips = (seat: number, rules: Rules) => (!rules.chips ? 0 : rules.chipStart === 'one' ? 1 : rules.chipStart === 'seat' ? Math.min(MAX_CHIPS, seat) : 0);
 /** 1試合でめくる目標の数 */
 export const GOAL_PICK = 3;
 /** 最後の1枚を排除するのに必要な達成数 */
@@ -343,7 +354,7 @@ export function newOverlayGame(
     // 初期の袋のためらい1枚は必ず一番下（最後に引かれる位置．引くのは配列の末尾から）に置く
     const hi = bag.findIndex(t => t.kind === 'HES');
     if (hi >= 0) bag.unshift(bag.splice(hi, 1)[0]);
-    s.players.push({ name: p.name, isBot: !!p.isBot, botType: p.botType, bag, discard: [], placed: [], pos: { x: 0, y: 0 }, hes: 0, perms: [], traces: [], removed: 0, bought: 0, finished: false, chips: 0 });
+    s.players.push({ name: p.name, isBot: !!p.isBot, botType: p.botType, bag, discard: [], placed: [], pos: { x: 0, y: 0 }, hes: 0, perms: [], traces: [], removed: 0, bought: 0, finished: false, chips: startChips(s.players.length, rules) });
   }
   if (rules.goals !== 'off') {
     const gs = [...GOAL_KINDS];
@@ -556,8 +567,9 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
   if (a.roomba != null) parts.push('ルンバで1枚排除');
   if (hit.length) {
     (p.goals ??= []).push(...hit);
-    if (s.rules.chips) p.chips = Math.min(MAX_CHIPS, (p.chips ?? 0) + hit.length);
-    parts.push(`目標達成「${hit.map(k => GOALS[k].name).join('」「')}」${s.rules.chips ? '（決心チップ+' + hit.length + '）' : ''}`);
+    const gain = hit.reduce((n, k) => n + goalReward(k, s.rules), 0);
+    if (s.rules.chips) p.chips = Math.min(MAX_CHIPS, (p.chips ?? 0) + gain);
+    parts.push(`目標達成「${hit.map(k => GOALS[k].name).join('」「')}」${s.rules.chips ? '（決心チップ+' + gain + '）' : ''}`);
   }
   if (eaten) parts.push('ルンバが1枚吸い込んだ');
   for (const f of newFurn) parts.push(`${TILES[f.kind].name}を(${f.pos.x},${f.pos.y})に置いた`);

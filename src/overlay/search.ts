@@ -7,7 +7,7 @@
 import { ALL_PERMS as PERMS, BUYABLE, Dir, FURN_KINDS, OKind, TILES, UNLIMITED_KINDS, isPerm } from './tiles';
 import {
   Env, Furn, MAX_CHIPS, OAction, OPlayer, OState, Placed, Pos, Rules, Tile, X_MAX, X_MIN, canBuyAt, canDraw, canDropAt, canMove, canPlaceFurn, chipNeed,
-  dirsOf, discardLimit, effectAt, envOf, exitPos, goalMet, goalNeed, hasGlobal, isDeep, isLastCard, ownedTiles, samePos, yMax, yMin,
+  dirsOf, discardLimit, GOAL_KINDS, goalReward, effectAt, envOf, exitPos, goalMet, goalNeed, hasGlobal, isDeep, isLastCard, ownedTiles, samePos, yMax, yMin,
 } from './engine';
 import { BAG_KINDS, BINS, GOAL_BIT, KIDX, MIDX, NFEAT, NK, NM, ValueModel, boardExt, countsOf, featOfPlayer, fillFeat, goalMask, kindWeights, permMaskOf, popcount, stockOf } from './value';
 
@@ -61,7 +61,7 @@ class Turn {
   readonly hasYutori: boolean; readonly noCond: boolean; readonly hasKakeibo: boolean;
   readonly furn0: Furn[]; readonly shelves0: Pos[]; readonly ext0: Ext; readonly roombaPos: Pos | null;
   /** 目標：この試合の目標のビット，手番の初めに達成済みのビット，最後の1枚を排除するのに要る数 */
-  readonly goalsOn: number; readonly g0: number; readonly need: number;
+  readonly goalsOn: number; readonly g0: number; readonly need: number; readonly reward: number[];
   /** u[t] = この手番のあと t 手番で終わるときの点数（t = 0 はこの手番で終わる） */
   readonly u = new Float64Array(BINS + 1);
   private readonly x = new Float64Array(NFEAT);
@@ -90,6 +90,7 @@ class Turn {
     this.furn0 = s.rules.favBoard ? p.furn ?? [] : [];
     this.shelves0 = (p.fixed ?? []).map(f => f.pos);
     this.goalsOn = goalMask(s.goals); this.g0 = goalMask(p.goals) & this.goalsOn; this.need = goalNeed(s.rules);
+    this.reward = GOAL_KINDS.map(k => goalReward(k, s.rules));
     this.ext0 = this.ext(this.shelves0, this.furn0);
     this.roombaPos = this.furn0.find(f => f.kind === 'ROOMBA')?.pos ?? null;
     this.setUtility();
@@ -148,6 +149,13 @@ class Turn {
     return v;
   }
 
+  /** 新しく達成した目標（ビット）でもらえる決心チップ */
+  private gain(m: number): number {
+    let n = 0;
+    for (let i = 0; m; i++, m >>= 1) if (m & 1) n += this.reward[i];
+    return n;
+  }
+
   /** 排除の有無から決心チップの増減を決めて点数にする */
   private finish(bag: ArrayLike<number>, disc: ArrayLike<number>, permMask: number, spent: number, nRemoved: number, stock: ArrayLike<number>, ext: Ext, cache = true, junk = false, buyCost = 0): number {
     // 目標のうち，選び方で決まるもの（4枚以上排除・合計コスト5以上）．junk は「ガラクタを排除したか」（今の目標には無いが，判定の口は残してある）
@@ -158,7 +166,7 @@ class Turn {
     }
     let chips = this.chips - spent;
     if (this.rules.chips) {
-      chips = Math.min(MAX_CHIPS, chips + popcount(ext.g & ~this.g0)); // 目標を達成したぶん
+      chips = Math.min(MAX_CHIPS, chips + this.gain(ext.g & ~this.g0)); // 目標を達成したぶん
       if (((this.rules.chipGain === 'idle' && nRemoved === 0) || this.hasKakeibo) && chips < MAX_CHIPS) chips++;
     }
     const v = this.leaf(bag, disc, permMask, chips, this.p.removed + nRemoved, stock, ext, cache);

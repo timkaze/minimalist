@@ -179,6 +179,26 @@ describe('目標', () => {
     expect(p.chips).toBe(1);
   });
 
+  it('goalChips=tiered：難しい目標ほど多くもらえる（理性の果て＝2枚）', () => {
+    const s = game({ goals: 'bonus', chipGain: 'goal', goalChips: 'tiered' });
+    s.goals = ['CALM3', 'TOP', 'BIGBUY'];
+    const p = s.players[0];
+    stack(s, 'DOUBT', 'DOUBT', 'DOUBT');
+    for (let i = 0; i < 3; i++) draw(s);
+    stop(s);
+    applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [] });
+    expect(p.chips).toBe(2);
+    expect(s.log[s.log.length - 1]).toContain('決心チップ+2');
+  });
+
+  it('chipStart：はじめの決心チップ（全員1枚／手番順に0・1・2…枚）', () => {
+    const n = (rules: Partial<Rules>, k: number) => newOverlayGame(Array.from({ length: k }, (_, i) => ({ name: `P${i}` })), 1, { rules }).players.map(p => p.chips);
+    expect(n({}, 3)).toEqual([0, 0, 0]);
+    expect(n({ chipStart: 'one' }, 3)).toEqual([1, 1, 1]);
+    expect(n({ chipStart: 'seat' }, 4)).toEqual([0, 1, 2, 3]);
+    expect(n({ chipStart: 'seat', chips: false }, 2)).toEqual([0, 0]);
+  });
+
   it('need1：目標を1つ達成するまで，最後の1枚は排除できない', () => {
     const s = game({ goals: 'need1' });
     s.goals = ['TOP', 'IMP3', 'BIGBUY'];

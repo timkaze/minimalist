@@ -35,6 +35,7 @@ h3 { margin: 18px 0 8px; font-size: 13px; letter-spacing: .08em; color: #c8cede;
 .goalsbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; padding: 6px 16px; }
 .goalsbar .gl { align-self: center; font-weight: 700; color: var(--gold); }
 .goalsbar .gl small { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
+.goalsbar .gc { color: var(--gold); font-size: 11px; font-weight: 400; }
 .goal { display: flex; flex-direction: column; gap: 1px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff08; min-width: 150px; }
 .goal.done { border-color: var(--gold); background: #f2c75a1a; }
 .goal small { color: var(--muted); font-size: 11px; }
