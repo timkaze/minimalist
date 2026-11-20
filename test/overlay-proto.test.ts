@@ -147,7 +147,20 @@ describe('理性のお気に入り（試作）とお気に入りの在庫', () =
     const s = newOverlayGame([{ name: 'A' }, { name: 'B' }, { name: 'C' }], 1, { rules: { favOne: true } });
     expect(s.market.BIGDAY).toBe(1);
     expect(s.market.DOWN2).toBe(3);
-    expect(newOverlayGame([{ name: 'A' }, { name: 'B' }, { name: 'C' }], 1).market.BIGDAY).toBe(3);
+    expect(newOverlayGame([{ name: 'A' }, { name: 'B' }, { name: 'C' }], 1).market.BIGDAY).toBe(1); // 今の既定は各1枚
+    expect(newOverlayGame([{ name: 'A' }, { name: 'B' }, { name: 'C' }], 1, { rules: { favOne: false } }).market.BIGDAY).toBe(3);
+    const four = (r: Partial<Rules>) => newOverlayGame(['A', 'B', 'C', 'D'].map(name => ({ name })), 1, { rules: r });
+    expect(four({ favStock4: 2 }).market.BIGDAY).toBe(2);
+    expect(four({ chipStart: 'wide' }).players.map(p => p.chips)).toEqual([0, 1, 2, 3]);
+    expect(newOverlayGame([{ name: 'A' }, { name: 'B' }, { name: 'C' }], 1, { rules: { chipStart: 'wide' } }).players.map(p => p.chips)).toEqual([0, 1, 2]);
+  });
+
+  it('favFrom=2：1ラウンド目はお気に入りを取得できない', () => {
+    const s = game({ favFrom: 2 });
+    stack(s, 'UP2', 'RUSH', 'WANT'); s.players[0].discard = [];
+    for (let i = 0; i < 3; i++) draw(s);
+    stop(s);
+    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: ['KODAWARI'], remove: [] })).toThrow(/2ラウンド目から/);
   });
 });
 

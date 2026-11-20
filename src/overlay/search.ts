@@ -236,7 +236,7 @@ class Turn {
     let out = this.buyAll.get(key);
     if (out) return out;
     out = [];
-    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && (TILES[k].cost ?? 99) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !(isPerm(k) && this.s.round < this.rules.favFrom) && (TILES[k].cost ?? 99) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
     const cur: OKind[] = [];
     const rec = (i: number, left: number) => {
       out!.push([...cur]);

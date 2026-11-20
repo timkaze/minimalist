@@ -73,16 +73,20 @@ export interface Rules {
   goals: 'off' | 'bonus' | 'need1' | 'need2';
   /** 決心チップのもらい方：idle = 1枚も排除できなかった手番の終わりに1枚（目標の達成でも1枚）／goal = 目標の達成でだけもらう（家計簿は別） */
   chipGain: 'idle' | 'goal';
-  /** はじめに持つ決心チップ：none = 0枚／one = 全員1枚／seat = 手番順に 0, 1, 2, 2枚（後の手番ほど多い．2枚まで．3枚だと4人戦の4番手が勝ちすぎた） */
-  chipStart: 'none' | 'one' | 'seat';
+  /** はじめに持つ決心チップ：none = 0枚／one = 全員1枚／seat = 手番順に 0, 1, 2, 2枚（後の手番ほど多い．2枚まで．3枚だと4人戦の4番手が勝ちすぎた）／wide = seat と同じだが4人以上の卓では 0, 1, 2, 3枚 */
+  chipStart: 'none' | 'one' | 'seat' | 'wide';
   /** 目標のごほうび：one = どれも1枚／tiered = 難しさに応じて1〜3枚 */
   goalChips: 'one' | 'tiered';
   /** お気に入りの上限：1人が持てる数（0 = 上限なし） */
   favCap: 0 | 2;
   /** 手放すと決心チップ：ふつうのタイルの一部は，排除したときに決心チップをもらえる（強い＝どこでも／弱い＝理性の列で） */
   dropChips: boolean;
+  /** 在庫1枚（favOne）のとき，4人以上の卓のお気に入りの在庫 */
+  favStock4: 1 | 2;
+  /** お気に入りを取得できる最初のラウンド */
+  favFrom: 1 | 2;
 }
-export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 3, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: false, goals: 'need1', chipGain: 'goal', chipStart: 'seat', goalChips: 'tiered', favCap: 0, dropChips: false };
+export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 3, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: true, goals: 'need1', chipGain: 'goal', chipStart: 'seat', goalChips: 'tiered', favCap: 0, dropChips: false, favStock4: 1, favFrom: 1 };
 
 /** 外から来たルールを整える（不正な値は既定に） */
 export function normRules(r: Partial<Rules> | undefined | null): Rules {
@@ -107,10 +111,12 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
     carry: bool(x.carry, d.carry),
     favOne: bool(x.favOne, d.favOne),
     chipGain: x.chipGain === 'goal' || x.chipGain === 'idle' ? x.chipGain : d.chipGain,
-    chipStart: x.chipStart === 'none' || x.chipStart === 'one' || x.chipStart === 'seat' ? x.chipStart : d.chipStart,
+    chipStart: x.chipStart === 'none' || x.chipStart === 'one' || x.chipStart === 'seat' || x.chipStart === 'wide' ? x.chipStart : d.chipStart,
     goalChips: x.goalChips === 'tiered' || x.goalChips === 'one' ? x.goalChips : d.goalChips,
     favCap: x.favCap === 2 || x.favCap === 0 ? x.favCap : d.favCap,
     dropChips: bool(x.dropChips, d.dropChips),
+    favStock4: x.favStock4 === 2 || x.favStock4 === 1 ? x.favStock4 : d.favStock4,
+    favFrom: x.favFrom === 2 || x.favFrom === 1 ? x.favFrom : d.favFrom,
     goals: x.goals === 'bonus' || x.goals === 'need1' || x.goals === 'need2' || x.goals === 'off' ? x.goals : d.goals,
   };
 }
@@ -134,8 +140,8 @@ export const GOAL_KINDS = Object.keys(GOALS) as GoalKind[];
 // 難しさ（tiered のごほうび）は強いボットの達成率から：目標を追う必要がないときに 6割を超えるものは1枚，ほとんど達成されないものは2〜3枚
 /** 目標1つを達成したときにもらえる決心チップ */
 export const goalReward = (k: GoalKind, rules: Rules) => (rules.goalChips === 'tiered' ? GOALS[k].chips : 1);
-/** はじめに持つ決心チップ（seat 番目の手番の人） */
-export const startChips = (seat: number, rules: Rules) => (!rules.chips ? 0 : rules.chipStart === 'one' ? 1 : rules.chipStart === 'seat' ? Math.min(2, seat) : 0);
+/** はじめに持つ決心チップ（n 人の卓で seat 番目の手番の人） */
+export const startChips = (seat: number, rules: Rules, n = 2) => (!rules.chips ? 0 : rules.chipStart === 'one' ? 1 : rules.chipStart === 'seat' || rules.chipStart === 'wide' ? Math.min(rules.chipStart === 'wide' && n >= 4 ? 3 : 2, seat) : 0);
 /** 1試合でめくる目標の数 */
 export const GOAL_PICK = 3;
 /** 最後の1枚を排除するのに必要な達成数 */
@@ -353,7 +359,7 @@ export function newOverlayGame(
     players: [], market: {}, current: 0, round: 1, phase: 'play', turn: 'move', winners: [], log: [], rng: seed, nextId: 1,
     board: OBOARDS[rules.board], rules, gacha: GACHA_POOL.flatMap(([k, n]) => Array.from({ length: n }, () => k)),
   };
-  for (const k of opts.market ?? MARKET) s.market[k] = UNLIMITED_KINDS.includes(k) ? UNLIMITED : rules.favOne && isPerm(k) ? 1 : Math.max(2, setup.length);
+  for (const k of opts.market ?? MARKET) s.market[k] = UNLIMITED_KINDS.includes(k) ? UNLIMITED : rules.favOne && isPerm(k) ? (setup.length >= 4 ? rules.favStock4 : 1) : Math.max(2, setup.length);
   for (const p of setup) {
     const bag: Tile[] = [];
     for (const [k, n] of startingBag(rules.hesCount, rules.bigBag)) for (let i = 0; i < n; i++) bag.push({ id: s.nextId++, kind: k });
@@ -361,7 +367,7 @@ export function newOverlayGame(
     // 初期の袋のためらい1枚は必ず一番下（最後に引かれる位置．引くのは配列の末尾から）に置く
     const hi = bag.findIndex(t => t.kind === 'HES');
     if (hi >= 0) bag.unshift(bag.splice(hi, 1)[0]);
-    s.players.push({ name: p.name, isBot: !!p.isBot, botType: p.botType, bag, discard: [], placed: [], pos: { x: 0, y: 0 }, hes: 0, perms: [], traces: [], removed: 0, bought: 0, finished: false, chips: startChips(s.players.length, rules) });
+    s.players.push({ name: p.name, isBot: !!p.isBot, botType: p.botType, bag, discard: [], placed: [], pos: { x: 0, y: 0 }, hes: 0, perms: [], traces: [], removed: 0, bought: 0, finished: false, chips: startChips(s.players.length, rules, setup.length) });
   }
   if (rules.goals !== 'off') {
     const gs = [...GOAL_KINDS];
@@ -477,6 +483,7 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
     const cost = TILES[k]?.cost;
     if (cost == null || s.market[k] === undefined) throw new ORuleError('市場にないタイルです');
     if (isPerm(k) && (p.perms.includes(k) || a.buy.filter(x => x === k).length > 1)) throw new ORuleError('同じお気に入りは1枚まで');
+    if (isPerm(k) && s.round < s.rules.favFrom) throw new ORuleError(`お気に入りは${s.rules.favFrom}ラウンド目から取得できます`);
     if (isPerm(k) && s.rules.favCap && p.perms.length + a.buy.filter(x => isPerm(x)).length > s.rules.favCap) throw new ORuleError(`お気に入りは1人${s.rules.favCap}枚までです`);
     if (!canBuyAt(k, pos.x, s.rules)) throw new ORuleError(TILES[k].calmNeed ? `${TILES[k].name}は理性${TILES[k].calmNeed}以上の列でないと取得できません` : `${TILES[k].name}は衝動${TILES[k].buyNeed}以上の列でないと取得できません`);
     total += cost;
