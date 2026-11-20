@@ -131,6 +131,10 @@ export const condFree = (perms: readonly OKind[], placed: readonly { kind: OKind
 
 /** 置いたタイルとして排除できない（盤に残る棚，使い切り．使い切りは最後の1枚なら排除できる） */
 export const lockedOnBoard = (k: OKind, owned: number) => !!TILES[k].stay || (!!TILES[k].oneShot && owned > 1);
+/** 手放すと決心チップ：強い（どこでも）＝捨てにくいタイル，弱い（理性の列でだけ）＝ふつうのタイル．安いタイル・量のタイルには付けない */
+export const DROP_CHIP: Partial<Record<OKind, 'strong' | 'calm'>> = { MEMO: 'strong', REST: 'strong', SWING: 'strong', BR: 'calm', BREATH: 'calm', CALM: 'calm', DRAG: 'calm' };
+/** そのタイルを列 x で排除したときにもらえる決心チップ（ルール dropChips のとき） */
+export const dropChipOf = (k: OKind, x: number) => (DROP_CHIP[k] === 'strong' ? 1 : DROP_CHIP[k] === 'calm' && x < 0 ? 1 : 0);
 /** 使い切りの文 */
 export const ONE_SHOT_TEXT = '使い切り（置いた手番の終わりに市場へ戻る．排除はできない．最後の1枚なら戻らない）';
 

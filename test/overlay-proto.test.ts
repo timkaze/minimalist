@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BUYABLE, OKind, marketFromChoice } from '../src/overlay/tiles';
+import { dropChipOf } from '../src/overlay/tiles';
 import { OState, Rules, UNLIMITED, applyOverlay, hereFx, newOverlayGame, ownedTiles } from '../src/overlay/engine';
 import { OPRESETS, chooseOverlayAction, playOverlayTurn } from '../src/overlay/bot';
 import { chooseSearchAction } from '../src/overlay/search';
@@ -386,5 +387,30 @@ describe('v0.6 で作り直したタイル', () => {
     expect(a.p.chips).toBe(0);
     const b = run('DOWN');
     expect(() => applyOverlay(b.s, 0, { type: 'resolve', buy: [], remove: [b.junk.id] })).toThrow();
+  });
+});
+
+describe('お気に入りの上限・手放すと決心チップ', () => {
+  it('favCap=2：3枚目のお気に入りは取得できない', () => {
+    const s = game({ favCap: 2 });
+    const p = s.players[0];
+    p.perms = ['KODAWARI', 'BAG'];
+    stack(s, 'WANT', 'WANT', 'RUSH', 'WANT'); // 衝動の列の上のほうへ（額を大きく）
+    p.discard = [];
+    for (let i = 0; i < 4; i++) draw(s);
+    stop(s);
+    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: ['COMPASS'], remove: [] })).toThrow(/2枚まで/);
+  });
+
+  it('dropChips：ひと休み（強い）は排除すると◆+1．分かれ道（弱い）は理性の列でだけ', () => {
+    for (const on of [true, false]) {
+      const s = game({ chipGain: 'goal', dropChips: on });
+      const p = s.players[0];
+      stack(s, 'REST', 'WANT'); draw(s); stop(s); // START でひと休み（量2）の上に立つ
+      expect(here(s)).toEqual({ kind: 'remove', amount: 2 });
+      applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [p.placed[0].id] });
+      expect(p.chips).toBe(on ? 1 : 0);
+    }
+    expect([dropChipOf('BR', -1), dropChipOf('BR', 0), dropChipOf('MEMO', 2), dropChipOf('DOWN', -3)]).toEqual([1, 0, 1, 0]);
   });
 });

@@ -4,7 +4,7 @@
 //   点数：mean = あと何手番かの平均（小さいほど良い）／win = 相手の残り手番の分布も見た勝つ確率
 // 仕様：Memories/01_BoardGames/ミニマリスト_オーバーレイ版_ボット強化_仕様.md
 
-import { ALL_PERMS as PERMS, BUYABLE, Dir, FURN_KINDS, OKind, TILES, UNLIMITED_KINDS, isPerm, topAt } from './tiles';
+import { ALL_PERMS as PERMS, BUYABLE, Dir, FURN_KINDS, OKind, TILES, UNLIMITED_KINDS, isPerm, topAt, DROP_CHIP } from './tiles';
 import {
   Env, Furn, MAX_CHIPS, OAction, OPlayer, OState, Placed, Pos, Rules, Tile, X_MAX, X_MIN, canBuyAt, canDraw, canDropAt, canMove, canPlaceFurn, chipNeed,
   dirsOf, discardLimit, GOAL_KINDS, goalReward, effectAt, envOf, exitPos, goalMet, goalNeed, hasGlobal, isDeep, isLastCard, ownedTiles, samePos, yMax, yMin,
@@ -78,6 +78,7 @@ class Turn {
     const p = this.p = s.players[s.current];
     this.round = s.round; this.seat = s.current;
     this.env = envOf(s, p); this.rules = s.rules;
+    if (s.rules.dropChips && s.rules.chips) this.dropW = BAG_KINDS.map(k => DROP_CHIP[k]);
     this.chips = s.rules.chips ? p.chips ?? 0 : 0;
     this.permMask = permMaskOf(p.perms);
     this.stock = stockOf(s);
@@ -151,6 +152,17 @@ class Turn {
 
   /** 今見ている止まり方で，ご褒美の上にいてもらえる決心チップ（plan のあいだだけ） */
   private stopChip = 0;
+  /** 手放すと決心チップ（ルール dropChips）：種類ごとの強さ．plan のあいだ，止まる前の捨て山（＋置いたタイル）と列を覚えておき，減ったぶんを排除とみなす */
+  private dropW: Array<'strong' | 'calm' | undefined> | null = null;
+  private dropBase: number[] | null = null;
+  private dropX = 0;
+  private dropGain(disc: ArrayLike<number>): number {
+    const w = this.dropW, b = this.dropBase;
+    if (!w || !b) return 0;
+    let n = 0;
+    for (let k = 0; k < w.length; k++) if (w[k] && b[k] > disc[k] && (w[k] === 'strong' || this.dropX < 0)) n += b[k] - disc[k];
+    return n;
+  }
 
   /** 新しく達成した目標（ビット）でもらえる決心チップ */
   private gain(m: number): number {
@@ -167,7 +179,7 @@ class Turn {
       const dyn = ((nRemoved >= 4 ? GOAL_BIT.DUMP4 : 0) | (buyCost >= 5 ? GOAL_BIT.BIGBUY : 0)) & this.goalsOn & ~ext.g;
       if (dyn) ext = this.ext(ext.shelves, ext.furn, ext.g | dyn);
     }
-    let chips = this.chips - spent + this.stopChip;
+    let chips = this.chips - spent + this.stopChip + this.dropGain(disc);
     if (this.rules.chips) {
       chips = Math.min(MAX_CHIPS, chips + this.gain(ext.g & ~this.g0)); // 目標を達成したぶん
       if (((this.rules.chipGain === 'idle' && nRemoved === 0) || this.hasKakeibo) && chips < MAX_CHIPS) chips++;
@@ -234,6 +246,7 @@ class Turn {
         if (c > left) continue;
         const n = cur.filter(z => z === k).length;
         if (n >= Math.min(isPerm(k) ? 1 : 3, this.stock[MIDX[k]])) continue;
+        if (isPerm(k) && this.rules.favCap && this.p.perms.length + cur.filter(isPerm).length >= this.rules.favCap) continue;
         cur.push(k); rec(j, left - c); cur.pop();
       }
     };
@@ -422,10 +435,11 @@ class Turn {
 
   /** 今のマスで止まったときの一番良い選び方．exact：実際に止まったあと（取得は全部の組み合わせを試す．運試しは引いた結果を使う） */
   plan(node: Node, exact: boolean, st: Sit = this.sit(node)): Plan {
-    const saved = this.stopChip;
+    const saved = this.stopChip, savedBase = this.dropBase, savedX = this.dropX;
     const top = this.rules.chips ? topAt(node.placed, node.pos) : undefined;
     this.stopChip = top ? TILES[top.kind].stopChip ?? 0 : 0;
-    try { return this.planAt(node, exact, st); } finally { this.stopChip = saved; }
+    if (this.dropW) { this.dropBase = st.discP.slice(); this.dropX = node.pos.x; }
+    try { return this.planAt(node, exact, st); } finally { this.stopChip = saved; this.dropBase = savedBase; this.dropX = savedX; }
   }
 
   private planAt(node: Node, exact: boolean, st: Sit): Plan {

@@ -73,6 +73,7 @@ h3 { margin: 18px 0 8px; font-size: 13px; letter-spacing: .08em; color: #c8cede;
 .tile .c-w { left: .2em; bottom: .28em; color: #fff; background: #7d5a50; }
 .tile .c-carry { font-size: .36em; font-weight: 800; line-height: 1; padding: .14em .4em; margin-top: .1em; border-radius: .6em; color: #fff; background: #c93a2e; letter-spacing: -.03em; white-space: nowrap; }
 .tile .c-once { font-size: .32em; font-weight: 800; line-height: 1; padding: .1em .35em; margin-top: .08em; border-radius: .6em; color: #fff; background: #6b5bd6; white-space: nowrap; }
+.tile .c-once.drop { background: #2f8f5b; }
 .tile .c-calm { right: .2em; bottom: .28em; color: #fff; background: #2f8f58; }
 .tile .seq { position: absolute; left: .25em; top: .22em; font-size: .4em; font-weight: 700; background: var(--tile-ink); color: var(--tile); border-radius: 50%; width: 1.5em; height: 1.5em; display: flex; align-items: center; justify-content: center; }
 .tile .stk { position: absolute; right: .3em; top: .25em; font-size: .38em; font-weight: 700; color: #6b4a00; background: #ffe08a; border-radius: .5em; padding: .15em .35em; }

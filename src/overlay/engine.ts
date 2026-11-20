@@ -4,7 +4,7 @@
 //   止まったマスの「一番上に見えている効果」（タイルがあればタイル，なければ盤の印刷）で取得か排除をする
 //   コマは無い．「今いるマス」は最後に置いたタイルの矢印の先（画面ではそのマスを光らせる）
 
-import { DELTA, DIRS, Dir, FURN_KINDS, Fx, GACHA_FX, GACHA_POOL, HES_FX, MARKET, NO_FX, OKind, LUCKY_FX, TILES, UNLIMITED_KINDS, isPerm, startingBag, tileDirs, weightOf, condFree, topAt, lockedOnBoard } from './tiles';
+import { DELTA, DIRS, Dir, FURN_KINDS, Fx, GACHA_FX, GACHA_POOL, HES_FX, MARKET, NO_FX, OKind, LUCKY_FX, TILES, UNLIMITED_KINDS, isPerm, startingBag, tileDirs, weightOf, condFree, topAt, lockedOnBoard, dropChipOf } from './tiles';
 import { nextRandom } from '../engine/rng';
 import { shuffle } from '../engine/rng';
 
@@ -77,8 +77,12 @@ export interface Rules {
   chipStart: 'none' | 'one' | 'seat';
   /** 目標のごほうび：one = どれも1枚／tiered = 難しさに応じて1〜3枚 */
   goalChips: 'one' | 'tiered';
+  /** お気に入りの上限：1人が持てる数（0 = 上限なし） */
+  favCap: 0 | 2;
+  /** 手放すと決心チップ：ふつうのタイルの一部は，排除したときに決心チップをもらえる（強い＝どこでも／弱い＝理性の列で） */
+  dropChips: boolean;
 }
-export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 3, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: false, goals: 'need1', chipGain: 'goal', chipStart: 'seat', goalChips: 'tiered' };
+export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 3, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: false, goals: 'need1', chipGain: 'goal', chipStart: 'seat', goalChips: 'tiered', favCap: 0, dropChips: false };
 
 /** 外から来たルールを整える（不正な値は既定に） */
 export function normRules(r: Partial<Rules> | undefined | null): Rules {
@@ -105,6 +109,8 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
     chipGain: x.chipGain === 'goal' || x.chipGain === 'idle' ? x.chipGain : d.chipGain,
     chipStart: x.chipStart === 'none' || x.chipStart === 'one' || x.chipStart === 'seat' ? x.chipStart : d.chipStart,
     goalChips: x.goalChips === 'tiered' || x.goalChips === 'one' ? x.goalChips : d.goalChips,
+    favCap: x.favCap === 2 || x.favCap === 0 ? x.favCap : d.favCap,
+    dropChips: bool(x.dropChips, d.dropChips),
     goals: x.goals === 'bonus' || x.goals === 'need1' || x.goals === 'need2' || x.goals === 'off' ? x.goals : d.goals,
   };
 }
@@ -471,6 +477,7 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
     const cost = TILES[k]?.cost;
     if (cost == null || s.market[k] === undefined) throw new ORuleError('市場にないタイルです');
     if (isPerm(k) && (p.perms.includes(k) || a.buy.filter(x => x === k).length > 1)) throw new ORuleError('同じお気に入りは1枚まで');
+    if (isPerm(k) && s.rules.favCap && p.perms.length + a.buy.filter(x => isPerm(x)).length > s.rules.favCap) throw new ORuleError(`お気に入りは1人${s.rules.favCap}枚までです`);
     if (!canBuyAt(k, pos.x, s.rules)) throw new ORuleError(TILES[k].calmNeed ? `${TILES[k].name}は理性${TILES[k].calmNeed}以上の列でないと取得できません` : `${TILES[k].name}は衝動${TILES[k].buyNeed}以上の列でないと取得できません`);
     total += cost;
     need[k] = (need[k] ?? 0) + 1;
@@ -576,6 +583,9 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
     parts.push(`目標達成「${hit.map(k => GOALS[k].name).join('」「')}」${s.rules.chips ? '（決心チップ+' + gain + '）' : ''}`);
   }
   if (treat && p.chips < MAX_CHIPS) { p.chips = Math.min(MAX_CHIPS, p.chips + treat); parts.push(`ご褒美（決心チップ+${treat}）`); }
+  // 手放すと決心チップ（ルール dropChips）
+  const dropGain = s.rules.dropChips && s.rules.chips ? goneTiles.reduce((n, c) => n + dropChipOf(c.kind, pos.x), 0) : 0;
+  if (dropGain && p.chips < MAX_CHIPS) { p.chips = Math.min(MAX_CHIPS, p.chips + dropGain); parts.push(`手放して決心チップ+${dropGain}`); }
   if (eaten) parts.push('ルンバが1枚吸い込んだ');
   for (const f of newFurn) parts.push(`${TILES[f.kind].name}を(${f.pos.x},${f.pos.y})に置いた`);
   s.log.push(parts.join(' / '));

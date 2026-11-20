@@ -2,7 +2,7 @@
 //   コマは描かない．「今止めるとどのマスの効果になるか」を盤（光るマス）とパネルに常に出す
 
 import './ui.css';
-import { ARROW, Dir, Fx, MARKET, OKind, TILES, TILE_SETS, UNLIMITED_KINDS, carryText, dirsText, fxText, marketFromChoice, startingBag, tileDirs, weightOf, condFree, ONE_SHOT_TEXT, lockedOnBoard } from './tiles';
+import { ARROW, Dir, Fx, MARKET, OKind, TILES, TILE_SETS, UNLIMITED_KINDS, carryText, dirsText, fxText, marketFromChoice, startingBag, tileDirs, weightOf, condFree, ONE_SHOT_TEXT, lockedOnBoard, DROP_CHIP } from './tiles';
 import { OMAX_SEATS, ORoomInfo, OServerMsg } from './protocol';
 import {
   DEFAULT_RULES, GOALS, OAction, OBOARDS, OPlayer, OState, Pos, Rules, Tile, X_MAX, X_MIN, applyOverlay, goalNeed, goalReward, canBuyAt, canDraw, canDropAt, canMove,
@@ -108,6 +108,7 @@ function tileHTML(kind: OKind, o: { fx?: Fx; cls?: string; attr?: string; seq?: 
   const carry = d.boost && rules.carry ? `<span class="c-carry" title="盤にあるあいだ，止まったマスの量 +${d.boost}">運ぶ+${d.boost}</span>`
     : d.freeDrop && rules.needs ? '<span class="c-carry" title="盤にあるあいだ，排除の条件（理性n）を無視">条件なし</span>'
     : d.stopChip && rules.chips ? `<span class="c-carry" title="この上で止まったら決心チップ+${d.stopChip}">止まると◆+${d.stopChip}</span>` : '';
+  const dc = rules.dropChips && rules.chips && DROP_CHIP[kind] ? `<span class="c-once drop" title="${DROP_CHIP[kind] === 'strong' ? 'どこで排除しても' : '理性の列で排除したら'}決心チップ+1">${DROP_CHIP[kind] === 'strong' ? '手放すと◆' : '理で手放すと◆'}</span>` : '';
   const once = d.oneShot ? `<span class="c-once" title="${ONE_SHOT_TEXT}">使い切り</span>` : '';
   const tl = o.seq ? `<span class="seq">${o.seq}</span>` : o.cost && d.cost !== null ? `<span class="c-cost" title="取得コスト">${d.cost}</span>` : '';
   const tr = (o.stack ?? 0) > 1 ? `<span class="stk">${o.stack}枚</span>` : (o.count ?? 0) > 1 ? `<span class="cnt">×${o.count}</span>`
@@ -116,7 +117,7 @@ function tileHTML(kind: OKind, o: { fx?: Fx; cls?: string; attr?: string; seq?: 
   const bl = d.perm ? '' : `<span class="c-w" title="捨てる重さ">重${weightOf(kind, rules)}</span>`;
   const br = rules.needs && d.dropNeed ? `<span class="c-calm" title="理性${d.dropNeed}以上の列で排除">理${d.dropNeed}</span>` : '';
   return `<div class="tile k-${d.perm ? 'perm' : fx.kind} ${dirs.length || d.perm ? '' : 'stay'} ${o.cls ?? ''}" ${o.attr ?? ''} title="${esc(tileTitle(kind))}">
-    ${dirs.map(x => `<i class="ar ${x}"></i>`).join('')}${center}${carry}${once}<span class="nm">${d.name}</span>${tl}${tr}${bl}${br}</div>`;
+    ${dirs.map(x => `<i class="ar ${x}"></i>`).join('')}${center}${carry}${once}${dc}<span class="nm">${d.name}</span>${tl}${tr}${bl}${br}</div>`;
 }
 
 function tileTitle(kind: OKind): string {
@@ -166,6 +167,8 @@ const RULE_OPTS: { key: keyof Rules; label: string; choices: [string, string][] 
   { key: 'chips', label: '決心チップ', choices: [['true', 'あり（排除できなかった手番に1枚．重さ1か条件1段階に使える）'], ['false', 'なし']] },
   { key: 'junk', label: 'ガラクタの矢印', choices: [['right', '→だけ'], ['four', '4方向']] },
   { key: 'goals', label: '目標（3枚めくる）', choices: [['off', 'なし'], ['bonus', 'あり（達成すると決心チップ1枚）'], ['need1', 'あり＋1つ達成するまで最後の1枚は手放せない'], ['need2', 'あり＋2つ達成するまで最後の1枚は手放せない']] },
+  { key: 'favCap', label: 'お気に入りの上限', choices: [['0', 'なし'], ['2', '1人2枚まで']] },
+  { key: 'dropChips', label: '手放すと決心チップ', choices: [['false', 'なし'], ['true', 'あり（タイルによって，どこで排除しても◆1／理性の列で排除したら◆1）']] },
   { key: 'favOne', label: 'お気に入りの在庫', choices: [['false', '人数ぶん（2枚以上）'], ['true', '各1枚（取り合い）']] },
   { key: 'carry', label: '量を運ぶタイル', choices: [['true', 'あり（「運ぶ +n」のタイルは，盤にあるあいだ止まったマスの量 +n）'], ['false', 'なし（v0.4 まで）']] },
   { key: 'bigBag', label: '初期の袋', choices: [['false', 'ふつう（欲しい2・迷い1・ガラクタ1＋ためらい）'], ['true', '多め（欲しい3・迷い2・ガラクタ2＋ためらい）']] },
@@ -253,7 +256,8 @@ function rulesHTML() {
     <li>タイルの四隅：左上＝コスト，右上＝取得の条件（衝n＝衝動n以上の列），左下＝捨てる重さ，右下＝排除の条件（理n＝理性n以上の列）</li>
     <li><b>決心チップ</b>（◆）：${R().chipGain === 'goal' ? '目標を達成したときに1枚もらう（3枚まで）．' : '1枚も排除できなかった手番の終わりに1枚もらう（3枚まで）．'}${R().chipStart === 'one' ? 'はじめに全員1枚持つ．' : R().chipStart === 'seat' ? 'はじめに手番順で0・1・2・2枚持つ（後の手番ほど多い）．' : ''}量のマスで排除するとき，1枚で「重さ1の肩代わり」か「理性の条件1段階の免除」に使える．足りない分だけ自動で使う</li>
     <li>高いものは<b>衝動の列でないと取得できない</b>，思い入れのあるものは<b>理性の列でないと排除できない</b>（タイルの説明に書いてあります）</li>
-    <li>★お気に入りは取得したら自分の前に置き，効果がずっと続きます（袋に入らない．各1枚）</li>
+    <li>★お気に入りは取得したら自分の前に置き，効果がずっと続きます（袋に入らない．各1枚${R().favCap ? `．<b>1人${R().favCap}枚まで</b>` : ''}）</li>
+    ${R().dropChips && R().chips ? '<li><b>手放すと◆</b>：緑の印のタイルは，排除したときに決心チップを1枚もらえる（「理で手放すと◆」は理性の列で排除したときだけ）</li>' : ''}
     ${R().lastCard ? '' : '<li><b>最後の1枚も，量のマスで排除</b>しないと達成になりません（重さ・条件もふつうどおり．決心チップは使えます）．↑や→のタイルが最後に残ると捨てに行けないので，終わり方を考えて残すタイルを選びます</li>'}
     ${R().goals === 'off' ? '' : `<li><b>目標</b>：はじめに目標を3枚めくります（全員共通）．止まり方が条件を満たしたら達成で，決心チップを${R().goalChips === 'tiered' ? '目標ごとに書かれた枚数（難しさに応じて1〜3枚）' : '1枚'}もらいます（1人1回ずつ）${goalNeed(R()) ? `．<b>${goalNeed(R())}つ達成するまで，最後の1枚は手放せません</b>` : ''}</li>`}
     <li>タイルが0枚になったら達成．そのラウンドの最後まで遊び，排除した枚数が多い人の勝ち（同じならお気に入りのコストの合計）</li>
