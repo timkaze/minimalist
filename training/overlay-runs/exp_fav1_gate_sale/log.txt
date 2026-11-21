@@ -1,0 +1,11 @@
+== fav1_gate_sale: OV_TILES= RULES={"favGate":"sale"} SET=all
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp/training/overlay-runs/fit_exp_fav1_gate_sale
+[1] データ 121665行（作成 283秒，終わらなかった人 6.3%）学習 3秒  検証 CE 1.956  手番数の誤差 3.54（平均で当てた場合 8.13）
+[2] データ 265788行（作成 288秒，終わらなかった人 21.0%）学習 3秒  検証 CE 1.958  手番数の誤差 5.90（平均で当てた場合 11.61）
+[3] データ 395930行（作成 291秒，終わらなかった人 8.8%）学習 3秒  検証 CE 1.974  手番数の誤差 5.61（平均で当てた場合 11.05）
+[4] データ 518675行（作成 270秒，終わらなかった人 5.3%）学習 4秒  検証 CE 1.987  手番数の誤差 5.19（平均で当てた場合 10.21）
+保存 /home/tomida/git/mo-exp/training/overlay-runs/exp_fav1_gate_sale/value_last.json（計 1145秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp/training/overlay-runs/fit_exp_fav1_gate_sale
+[refit] データ 518675行  検証 CE 1.981  手番数の誤差 5.10（平均で当てた場合 10.21）
+保存 /home/tomida/git/mo-exp/training/overlay-runs/exp_fav1_gate_sale/value.json
+== done fav1_gate_sale

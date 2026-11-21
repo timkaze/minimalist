@@ -1,0 +1,249 @@
+/home/tomida/git/minimalist-online/src/overlay/search.ts:239
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+                                                     ^
+
+ReferenceError: favLocked is not defined
+    at <anonymous> (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:54)
+    at Array.filter (<anonymous>)
+    at Turn.buyOptions (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:24)
+    at Turn.shortBuy (/home/tomida/git/minimalist-online/src/overlay/search.ts:327:22)
+    at Turn.planAt (/home/tomida/git/minimalist-online/src/overlay/search.ts:461:69)
+    at Turn.plan (/home/tomida/git/minimalist-online/src/overlay/search.ts:442:23)
+    at Turn.stopValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:523:37)
+    at Turn.after (/home/tomida/git/minimalist-online/src/overlay/search.ts:554:47)
+    at chooseSearchAction (/home/tomida/git/minimalist-online/src/overlay/search.ts:640:21)
+    at Array.<anonymous> (/home/tomida/git/minimalist-online/training/overlay-search-node.ts:32:15)
+
+Node.js v22.23.3
+/home/tomida/git/minimalist-online/src/overlay/search.ts:239
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+                                                     ^
+
+ReferenceError: favLocked is not defined
+    at <anonymous> (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:54)
+    at Array.filter (<anonymous>)
+    at Turn.buyOptions (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:24)
+    at Turn.shortBuy (/home/tomida/git/minimalist-online/src/overlay/search.ts:327:22)
+    at Turn.planAt (/home/tomida/git/minimalist-online/src/overlay/search.ts:461:69)
+    at Turn.plan (/home/tomida/git/minimalist-online/src/overlay/search.ts:442:23)
+    at Turn.stopValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:523:37)
+    at Turn.value (/home/tomida/git/minimalist-online/src/overlay/search.ts:559:21)
+    at Turn.after (/home/tomida/git/minimalist-online/src/overlay/search.ts:554:71)
+    at Turn.drawValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:580:26)
+
+Node.js v22.23.3
+/home/tomida/git/minimalist-online/src/overlay/search.ts:239
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+                                                     ^
+
+ReferenceError: favLocked is not defined
+    at <anonymous> (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:54)
+    at Array.filter (<anonymous>)
+    at Turn.buyOptions (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:24)
+    at Turn.shortBuy (/home/tomida/git/minimalist-online/src/overlay/search.ts:327:22)
+    at Turn.planAt (/home/tomida/git/minimalist-online/src/overlay/search.ts:461:69)
+    at Turn.plan (/home/tomida/git/minimalist-online/src/overlay/search.ts:442:23)
+    at Turn.stopValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:523:37)
+    at Turn.after (/home/tomida/git/minimalist-online/src/overlay/search.ts:554:47)
+    at chooseSearchAction (/home/tomida/git/minimalist-online/src/overlay/search.ts:640:21)
+    at Array.<anonymous> (/home/tomida/git/minimalist-online/training/overlay-search-node.ts:32:15)
+
+Node.js v22.23.3
+/home/tomida/git/minimalist-online/src/overlay/search.ts:239
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+                                                     ^
+
+ReferenceError: favLocked is not defined
+    at <anonymous> (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:54)
+    at Array.filter (<anonymous>)
+    at Turn.buyOptions (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:24)
+    at Turn.shortBuy (/home/tomida/git/minimalist-online/src/overlay/search.ts:327:22)
+    at Turn.planAt (/home/tomida/git/minimalist-online/src/overlay/search.ts:461:69)
+    at Turn.plan (/home/tomida/git/minimalist-online/src/overlay/search.ts:442:23)
+    at Turn.stopValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:523:37)
+    at Turn.after (/home/tomida/git/minimalist-online/src/overlay/search.ts:554:47)
+    at chooseSearchAction (/home/tomida/git/minimalist-online/src/overlay/search.ts:640:21)
+    at Array.<anonymous> (/home/tomida/git/minimalist-online/training/overlay-search-node.ts:32:15)
+
+Node.js v22.23.3
+/home/tomida/git/minimalist-online/src/overlay/search.ts:239
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+                                                     ^
+
+ReferenceError: favLocked is not defined
+    at <anonymous> (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:54)
+    at Array.filter (<anonymous>)
+    at Turn.buyOptions (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:24)
+    at Turn.shortBuy (/home/tomida/git/minimalist-online/src/overlay/search.ts:327:22)
+    at Turn.planAt (/home/tomida/git/minimalist-online/src/overlay/search.ts:461:69)
+    at Turn.plan (/home/tomida/git/minimalist-online/src/overlay/search.ts:442:23)
+    at Turn.stopValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:523:37)
+    at Turn.value (/home/tomida/git/minimalist-online/src/overlay/search.ts:559:21)
+    at Turn.after (/home/tomida/git/minimalist-online/src/overlay/search.ts:554:71)
+    at Turn.drawValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:580:26)
+
+Node.js v22.23.3
+/home/tomida/git/minimalist-online/src/overlay/search.ts:239
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+                                                     ^
+
+ReferenceError: favLocked is not defined
+    at <anonymous> (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:54)
+    at Array.filter (<anonymous>)
+    at Turn.buyOptions (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:24)
+    at Turn.shortBuy (/home/tomida/git/minimalist-online/src/overlay/search.ts:327:22)
+    at Turn.planAt (/home/tomida/git/minimalist-online/src/overlay/search.ts:461:69)
+    at Turn.plan (/home/tomida/git/minimalist-online/src/overlay/search.ts:442:23)
+    at Turn.stopValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:523:37)
+    at Turn.value (/home/tomida/git/minimalist-online/src/overlay/search.ts:559:21)
+    at Turn.after (/home/tomida/git/minimalist-online/src/overlay/search.ts:554:71)
+    at Turn.drawValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:580:26)
+/home/tomida/git/minimalist-online/training/overlay-arena.ts:128
+    c.on('close', code => (code === 0 ? resolve(Buffer.concat(chunks).toString('utf8')) : reject(new Error(`${script} が失敗（${code}）`))));
+                                                                                                 ^
+
+Error: /home/tomida/git/minimalist-online/training/overlay-arena-worker.ts が失敗（1）
+    at ChildProcess.<anonymous> (/home/tomida/git/minimalist-online/training/overlay-arena.ts:128:98)
+    at ChildProcess.emit (node:events:519:28)
+    at maybeClose (node:internal/child_process:1101:16)
+    at ChildProcess._handle.onexit (node:internal/child_process:304:5)
+
+Node.js v22.23.3
+
+Node.js v22.23.3
+/home/tomida/git/minimalist-online/src/overlay/search.ts:239
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+                                                     ^
+
+ReferenceError: favLocked is not defined
+    at <anonymous> (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:54)
+    at Array.filter (<anonymous>)
+    at Turn.buyOptions (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:24)
+    at Turn.shortBuy (/home/tomida/git/minimalist-online/src/overlay/search.ts:327:22)
+    at Turn.planAt (/home/tomida/git/minimalist-online/src/overlay/search.ts:461:69)
+    at Turn.plan (/home/tomida/git/minimalist-online/src/overlay/search.ts:442:23)
+    at Turn.stopValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:523:37)
+    at Turn.value (/home/tomida/git/minimalist-online/src/overlay/search.ts:559:21)
+    at Turn.after (/home/tomida/git/minimalist-online/src/overlay/search.ts:554:71)
+    at Turn.drawValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:580:26)
+
+Node.js v22.23.3
+/home/tomida/git/minimalist-online/src/overlay/search.ts:239
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+                                                     ^
+
+ReferenceError: favLocked is not defined
+    at <anonymous> (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:54)
+    at Array.filter (<anonymous>)
+    at Turn.buyOptions (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:24)
+    at Turn.shortBuy (/home/tomida/git/minimalist-online/src/overlay/search.ts:327:22)
+    at Turn.planAt (/home/tomida/git/minimalist-online/src/overlay/search.ts:461:69)
+    at Turn.plan (/home/tomida/git/minimalist-online/src/overlay/search.ts:442:23)
+    at Turn.stopValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:523:37)
+    at Turn.after (/home/tomida/git/minimalist-online/src/overlay/search.ts:554:47)
+    at chooseSearchAction (/home/tomida/git/minimalist-online/src/overlay/search.ts:640:21)
+    at Array.<anonymous> (/home/tomida/git/minimalist-online/training/overlay-search-node.ts:32:15)
+
+Node.js v22.23.3
+/home/tomida/git/minimalist-online/src/overlay/search.ts:239
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+                                                     ^
+
+ReferenceError: favLocked is not defined
+    at <anonymous> (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:54)
+    at Array.filter (<anonymous>)
+    at Turn.buyOptions (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:24)
+    at Turn.shortBuy (/home/tomida/git/minimalist-online/src/overlay/search.ts:327:22)
+    at Turn.planAt (/home/tomida/git/minimalist-online/src/overlay/search.ts:461:69)
+    at Turn.plan (/home/tomida/git/minimalist-online/src/overlay/search.ts:442:23)
+    at Turn.stopValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:523:37)
+    at Turn.value (/home/tomida/git/minimalist-online/src/overlay/search.ts:559:21)
+    at Turn.after (/home/tomida/git/minimalist-online/src/overlay/search.ts:554:71)
+    at Turn.drawValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:580:26)
+
+Node.js v22.23.3
+/home/tomida/git/minimalist-online/src/overlay/search.ts:239
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+                                                     ^
+
+ReferenceError: favLocked is not defined
+    at <anonymous> (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:54)
+    at Array.filter (<anonymous>)
+    at Turn.buyOptions (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:24)
+    at Turn.shortBuy (/home/tomida/git/minimalist-online/src/overlay/search.ts:327:22)
+    at Turn.planAt (/home/tomida/git/minimalist-online/src/overlay/search.ts:461:69)
+    at Turn.plan (/home/tomida/git/minimalist-online/src/overlay/search.ts:442:23)
+    at Turn.stopValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:523:37)
+    at Turn.value (/home/tomida/git/minimalist-online/src/overlay/search.ts:559:21)
+    at Turn.after (/home/tomida/git/minimalist-online/src/overlay/search.ts:554:71)
+    at Turn.drawValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:580:26)
+
+Node.js v22.23.3
+/home/tomida/git/minimalist-online/src/overlay/search.ts:239
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+                                                     ^
+
+ReferenceError: favLocked is not defined
+    at <anonymous> (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:54)
+    at Array.filter (<anonymous>)
+    at Turn.buyOptions (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:24)
+    at Turn.shortBuy (/home/tomida/git/minimalist-online/src/overlay/search.ts:327:22)
+    at Turn.planAt (/home/tomida/git/minimalist-online/src/overlay/search.ts:461:69)
+    at Turn.plan (/home/tomida/git/minimalist-online/src/overlay/search.ts:442:23)
+    at Turn.stopValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:523:37)
+    at Turn.after (/home/tomida/git/minimalist-online/src/overlay/search.ts:554:47)
+    at chooseSearchAction (/home/tomida/git/minimalist-online/src/overlay/search.ts:640:21)
+    at Array.<anonymous> (/home/tomida/git/minimalist-online/training/overlay-search-node.ts:32:15)
+
+Node.js v22.23.3
+/home/tomida/git/minimalist-online/src/overlay/search.ts:239
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+                                                     ^
+
+ReferenceError: favLocked is not defined
+    at <anonymous> (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:54)
+    at Array.filter (<anonymous>)
+    at Turn.buyOptions (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:24)
+    at Turn.shortBuy (/home/tomida/git/minimalist-online/src/overlay/search.ts:327:22)
+    at Turn.planAt (/home/tomida/git/minimalist-online/src/overlay/search.ts:461:69)
+    at Turn.plan (/home/tomida/git/minimalist-online/src/overlay/search.ts:442:23)
+    at Turn.stopValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:523:37)
+    at Turn.value (/home/tomida/git/minimalist-online/src/overlay/search.ts:559:21)
+    at Turn.after (/home/tomida/git/minimalist-online/src/overlay/search.ts:554:71)
+    at Turn.drawValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:580:26)
+
+Node.js v22.23.3
+/home/tomida/git/minimalist-online/src/overlay/search.ts:239
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+                                                     ^
+
+ReferenceError: favLocked is not defined
+    at <anonymous> (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:54)
+    at Array.filter (<anonymous>)
+    at Turn.buyOptions (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:24)
+    at Turn.shortBuy (/home/tomida/git/minimalist-online/src/overlay/search.ts:327:22)
+    at Turn.planAt (/home/tomida/git/minimalist-online/src/overlay/search.ts:461:69)
+    at Turn.plan (/home/tomida/git/minimalist-online/src/overlay/search.ts:442:23)
+    at Turn.stopValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:523:37)
+    at Turn.value (/home/tomida/git/minimalist-online/src/overlay/search.ts:559:21)
+    at Turn.after (/home/tomida/git/minimalist-online/src/overlay/search.ts:554:71)
+    at Turn.drawValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:580:26)
+
+Node.js v22.23.3
+/home/tomida/git/minimalist-online/src/overlay/search.ts:239
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+                                                     ^
+
+ReferenceError: favLocked is not defined
+    at <anonymous> (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:54)
+    at Array.filter (<anonymous>)
+    at Turn.buyOptions (/home/tomida/git/minimalist-online/src/overlay/search.ts:239:24)
+    at Turn.shortBuy (/home/tomida/git/minimalist-online/src/overlay/search.ts:327:22)
+    at Turn.planAt (/home/tomida/git/minimalist-online/src/overlay/search.ts:461:69)
+    at Turn.plan (/home/tomida/git/minimalist-online/src/overlay/search.ts:442:23)
+    at Turn.stopValue (/home/tomida/git/minimalist-online/src/overlay/search.ts:523:37)
+    at Turn.after (/home/tomida/git/minimalist-online/src/overlay/search.ts:554:47)
+    at chooseSearchAction (/home/tomida/git/minimalist-online/src/overlay/search.ts:640:21)
+    at Array.<anonymous> (/home/tomida/git/minimalist-online/training/overlay-search-node.ts:32:15)
+
+Node.js v22.23.3

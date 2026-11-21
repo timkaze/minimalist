@@ -1,0 +1,11 @@
+== fav1_from2_narrow: OV_TILES= RULES={"favFrom":2,"chipStart":"narrow"} SET=all
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp/training/overlay-runs/fit_exp_fav1_from2_narrow
+[1] データ 122363行（作成 291秒，終わらなかった人 6.6%）学習 2秒  検証 CE 1.937  手番数の誤差 3.57（平均で当てた場合 8.34）
+[2] データ 270117行（作成 284秒，終わらなかった人 22.4%）学習 2秒  検証 CE 1.930  手番数の誤差 6.01（平均で当てた場合 11.96）
+[3] データ 402698行（作成 311秒，終わらなかった人 9.7%）学習 4秒  検証 CE 1.968  手番数の誤差 5.58（平均で当てた場合 11.19）
+[4] データ 526545行（作成 267秒，終わらなかった人 6.3%）学習 5秒  検証 CE 1.971  手番数の誤差 5.22（平均で当てた場合 10.56）
+保存 /home/tomida/git/mo-exp/training/overlay-runs/exp_fav1_from2_narrow/value_last.json（計 1167秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp/training/overlay-runs/fit_exp_fav1_from2_narrow
+[refit] データ 526545行  検証 CE 1.964  手番数の誤差 5.12（平均で当てた場合 10.56）
+保存 /home/tomida/git/mo-exp/training/overlay-runs/exp_fav1_from2_narrow/value.json
+== done fav1_from2_narrow

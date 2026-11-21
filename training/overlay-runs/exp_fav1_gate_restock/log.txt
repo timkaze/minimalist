@@ -1,0 +1,11 @@
+== fav1_gate_restock: OV_TILES= RULES={"favGate":"restock"} SET=all
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp/training/overlay-runs/fit_exp_fav1_gate_restock
+[1] データ 140324行（作成 344秒，終わらなかった人 10.3%）学習 2秒  検証 CE 2.006  手番数の誤差 4.45（平均で当てた場合 9.68）
+[2] データ 305896行（作成 337秒，終わらなかった人 34.4%）学習 3秒  検証 CE 1.857  手番数の誤差 6.84（平均で当てた場合 13.56）
+[3] データ 447372行（作成 322秒，終わらなかった人 9.8%）学習 4秒  検証 CE 1.942  手番数の誤差 6.14（平均で当てた場合 12.46）
+[4] データ 582310行（作成 307秒，終わらなかった人 7.0%）学習 6秒  検証 CE 1.965  手番数の誤差 5.79（平均で当てた場合 11.68）
+保存 /home/tomida/git/mo-exp/training/overlay-runs/exp_fav1_gate_restock/value_last.json（計 1326秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp/training/overlay-runs/fit_exp_fav1_gate_restock
+[refit] データ 582310行  検証 CE 1.957  手番数の誤差 5.69（平均で当てた場合 11.68）
+保存 /home/tomida/git/mo-exp/training/overlay-runs/exp_fav1_gate_restock/value.json
+== done fav1_gate_restock

@@ -1,0 +1,11 @@
+== fav1_gate_removed: OV_TILES= RULES={"favGate":"removed"} SET=all
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp/training/overlay-runs/fit_exp_fav1_gate_removed
+[1] データ 156074行（作成 337秒，終わらなかった人 21.1%）学習 2秒  検証 CE 1.855  手番数の誤差 5.88（平均で当てた場合 12.95）
+[2] データ 327309行（作成 287秒，終わらなかった人 37.0%）学習 3秒  検証 CE 1.809  手番数の誤差 7.74（平均で当てた場合 14.27）
+[3] データ 489825行（作成 403秒，終わらなかった人 20.8%）学習 5秒  検証 CE 1.888  手番数の誤差 7.67（平均で当てた場合 13.82）
+[4] データ 641972行（作成 381秒，終わらなかった人 12.8%）学習 6秒  検証 CE 1.952  手番数の誤差 7.28（平均で当てた場合 13.14）
+保存 /home/tomida/git/mo-exp/training/overlay-runs/exp_fav1_gate_removed/value_last.json（計 1425秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp/training/overlay-runs/fit_exp_fav1_gate_removed
+[refit] データ 641972行  検証 CE 1.942  手番数の誤差 7.20（平均で当てた場合 13.14）
+保存 /home/tomida/git/mo-exp/training/overlay-runs/exp_fav1_gate_removed/value.json
+== done fav1_gate_removed
