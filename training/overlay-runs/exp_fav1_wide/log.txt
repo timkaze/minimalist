@@ -1,0 +1,11 @@
+== fav1_wide: OV_TILES= RULES={"chipStart":"wide"} SET=all
+特徴量 114，装置 cuda，出力 /home/tomida/git/minimalist-online/training/overlay-runs/fit_exp_fav1_wide
+[1] データ 121193行（作成 294秒，終わらなかった人 6.4%）学習 2秒  検証 CE 1.922  手番数の誤差 3.38（平均で当てた場合 8.24）
+[2] データ 269669行（作成 276秒，終わらなかった人 26.4%）学習 3秒  検証 CE 1.862  手番数の誤差 6.14（平均で当てた場合 12.76）
+[3] データ 399426行（作成 295秒，終わらなかった人 8.1%）学習 4秒  検証 CE 1.919  手番数の誤差 5.68（平均で当てた場合 11.69）
+[4] データ 524766行（作成 269秒，終わらなかった人 7.2%）学習 5秒  検証 CE 1.942  手番数の誤差 5.28（平均で当てた場合 10.98）
+保存 /home/tomida/git/minimalist-online/training/overlay-runs/exp_fav1_wide/value_last.json（計 1146秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/minimalist-online/training/overlay-runs/fit_exp_fav1_wide
+[refit] データ 524766行  検証 CE 1.933  手番数の誤差 5.24（平均で当てた場合 10.98）
+保存 /home/tomida/git/minimalist-online/training/overlay-runs/exp_fav1_wide/value.json
+== done fav1_wide

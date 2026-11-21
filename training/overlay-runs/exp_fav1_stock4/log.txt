@@ -1,0 +1,11 @@
+== fav1_stock4: OV_TILES= RULES={"favStock4":2} SET=all
+特徴量 114，装置 cuda，出力 /home/tomida/git/minimalist-online/training/overlay-runs/fit_exp_fav1_stock4
+[1] データ 119723行（作成 280秒，終わらなかった人 5.6%）学習 2秒  検証 CE 1.972  手番数の誤差 3.40（平均で当てた場合 7.70）
+[2] データ 254923行（作成 280秒，終わらなかった人 17.0%）学習 2秒  検証 CE 1.928  手番数の誤差 5.23（平均で当てた場合 10.89）
+[3] データ 383245行（作成 297秒，終わらなかった人 9.8%）学習 3秒  検証 CE 1.975  手番数の誤差 5.21（平均で当てた場合 10.45）
+[4] データ 506935行（作成 269秒，終わらなかった人 6.7%）学習 4秒  検証 CE 1.965  手番数の誤差 4.94（平均で当てた場合 10.08）
+保存 /home/tomida/git/minimalist-online/training/overlay-runs/exp_fav1_stock4/value_last.json（計 1139秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/minimalist-online/training/overlay-runs/fit_exp_fav1_stock4
+[refit] データ 506935行  検証 CE 1.959  手番数の誤差 4.89（平均で当てた場合 10.08）
+保存 /home/tomida/git/minimalist-online/training/overlay-runs/exp_fav1_stock4/value.json
+== done fav1_stock4
