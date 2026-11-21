@@ -163,7 +163,7 @@ const RULE_OPTS: { key: keyof Rules; label: string; choices: [string, string][] 
   { key: 'midBuy', label: '中央の行（START の左右）', choices: [['true', '額2（ためらいの最低保証）'], ['false', '効果なし']] },
   { key: 'weights', label: '捨てる重さ', choices: [['heavy', '重い（欲しい2・↑へ行くタイル2・ガラクタ2）'], ['light', '軽い（ガラクタ2，ほかは1）']] },
   { key: 'chipGain', label: '決心チップのもらい方', choices: [['idle', '排除できなかった手番に1枚（目標の達成でも1枚）'], ['goal', '目標の達成でだけ（目標のルールと一緒に）']] },
-  { key: 'chipStart', label: 'はじめの決心チップ', choices: [['none', 'なし'], ['one', '全員1枚'], ['seat', '手番順に0・1・2・2枚（後の手番ほど多い）'], ['wide', '手番順に0・1・2・3枚（2・3人の卓は2枚まで）'], ['narrow', '手番順に0・1・2・2枚（4人の卓は0・1・1・2枚）']] },
+  { key: 'chipStart', label: 'はじめの決心チップ', choices: [['one', '全員1枚'], ['none', 'なし'], ['seat', '手番順に0・1・2・2枚（後の手番ほど多い）'], ['wide', '手番順に0・1・2・3枚（2・3人の卓は2枚まで）'], ['narrow', '手番順に0・1・2・2枚（4人の卓は0・1・1・2枚）']] },
   { key: 'goalChips', label: '目標のごほうび', choices: [['one', 'どれも決心チップ1枚'], ['tiered', '難しさに応じて1〜3枚（目標に書いてある）']] },
   { key: 'chips', label: '決心チップ', choices: [['true', 'あり（排除できなかった手番に1枚．重さ1か条件1段階に使える）'], ['false', 'なし']] },
   { key: 'junk', label: 'ガラクタの矢印', choices: [['right', '→だけ'], ['four', '4方向']] },
@@ -173,7 +173,7 @@ const RULE_OPTS: { key: keyof Rules; label: string; choices: [string, string][] 
   { key: 'favOne', label: 'お気に入りの在庫', choices: [['true', '各1枚（取り合い）'], ['false', '人数ぶん（2枚以上）']] },
   { key: 'favStock4', label: '4人戦のお気に入りの在庫（各1枚のとき）', choices: [['1', '各1枚'], ['2', '各2枚']] },
   { key: 'favFrom', label: 'お気に入りを取得できるのは', choices: [['1', '1ラウンド目から'], ['2', '2ラウンド目から']] },
-  { key: 'favGate', label: 'お気に入りの出会い方', choices: [['none', 'いつでも'], ['removed', '1枚以上手放してから（手放して好きな物が分かる）'], ['sale', '発売直後は高い（1ラウンド目+2・2ラウンド目+1）'], ['restock', '普通のタイルが売り切れるたびに1種入荷'], ['display', '山から2枚だけ並べ，取られたら次を1枚（額のマスで流せる）']] },
+  { key: 'favGate', label: 'お気に入りの出会い方', choices: [['display', '山から2枚だけ並べ，取られたら次を1枚（額のマスで流せる）'], ['none', '全部並べる'], ['removed', '1枚以上手放してから（手放して好きな物が分かる）'], ['sale', '発売直後は高い（1ラウンド目+2・2ラウンド目+1）'], ['restock', '普通のタイルが売り切れるたびに1種入荷']] },
   { key: 'favFlush', label: 'お気に入りの並びを流す（2枚並べのとき）', choices: [['1', '額1か◆1'], ['2', '額2か◆1'], ['0', '流せない']] },
   { key: 'carry', label: '量を運ぶタイル', choices: [['true', 'あり（「運ぶ +n」のタイルは，盤にあるあいだ止まったマスの量 +n）'], ['false', 'なし（v0.4 まで）']] },
   { key: 'bigBag', label: '初期の袋', choices: [['false', 'ふつう（欲しい2・迷い1・ガラクタ1＋ためらい）'], ['true', '多め（欲しい3・迷い2・ガラクタ2＋ためらい）']] },
@@ -187,7 +187,7 @@ const RULE_OPTS: { key: keyof Rules; label: string; choices: [string, string][] 
 ];
 
 function savedRules(): Rules {
-  try { return normRules(JSON.parse(store.get('rules4') ?? '{}')); } catch { return { ...DEFAULT_RULES }; }
+  try { return normRules(JSON.parse(store.get('rules5') ?? '{}')); } catch { return { ...DEFAULT_RULES }; }
 }
 /** 開始画面で今選んでいるルール（画面に無ければ保存してあるもの） */
 function readRulesDraft(): Rules {
@@ -229,10 +229,10 @@ function bindOptions() {
     app.querySelector<HTMLElement>('#startbagBody')!.innerHTML = startingBag(readRulesDraft().hesCount).map(([k, n]) => infoHTML(k, '', n)).join('');
   };
   setSel.onchange = () => { store.set('set', setSel.value); info(); };
-  app.querySelectorAll<HTMLSelectElement>('select[data-rule]').forEach(x => x.onchange = () => { store.set('rules4', JSON.stringify(readRulesDraft())); info(); });
+  app.querySelectorAll<HTMLSelectElement>('select[data-rule]').forEach(x => x.onchange = () => { store.set('rules5', JSON.stringify(readRulesDraft())); info(); });
   app.querySelectorAll<HTMLInputElement>('#custom input').forEach(x => x.onchange = () =>
     store.set('tiles', [...app.querySelectorAll<HTMLInputElement>('#custom input:checked')].map(y => y.value).join(',')));
-  app.querySelector<HTMLButtonElement>('#resetRules')!.onclick = () => { store.set('rules4', JSON.stringify(DEFAULT_RULES)); render(); };
+  app.querySelector<HTMLButtonElement>('#resetRules')!.onclick = () => { store.set('rules5', JSON.stringify(DEFAULT_RULES)); render(); };
   info();
 }
 
@@ -242,7 +242,7 @@ function readOptions(): { rules: Rules; set: string; tiles?: OKind[]; market: OK
   const tiles = [...app.querySelectorAll<HTMLInputElement>('#custom input:checked')].map(x => x.value as OKind);
   let market: OKind[];
   try { market = marketFromChoice(set === 'custom' ? tiles : set); } catch (e) { alert((e as Error).message); return null; }
-  store.set('rules4', JSON.stringify(rules));
+  store.set('rules5', JSON.stringify(rules));
   store.set('set', set);
   if (set === 'custom') store.set('tiles', tiles.join(','));
   return { rules, set, tiles: set === 'custom' ? tiles : undefined, market };

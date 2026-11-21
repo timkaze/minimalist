@@ -141,15 +141,15 @@ export const ONE_SHOT_TEXT = '使い切り（置いた手番の終わりに市�
 export const PERMS: OKind[] = ['ROOMBA', 'BIGDAY', 'BAG', 'COMPASS', 'KODAWARI'];
 export const isPerm = (k: OKind) => !!TILES[k].perm;
 export const UNLIMITED_KINDS: OKind[] = ['DOWN'];
-export const MARKET: OKind[] = ['DOWN', 'BR', 'BREATH', 'SWING', 'UP2', 'RUSH', 'CALM', 'DOWN2', 'LIGHT', 'DRAG', 'MEMO', 'FREE', 'REST', 'TREAT', 'CLEAN', ...PERMS];
-/** 試作のタイル（「すべて」のセットには入らない．自分で選ぶ・検証のときだけ並ぶ） */
-/** 試作：理性のお気に入り */
+/** 理性のお気に入り（v0.7 から「すべて」に入る） */
 export const CALM_PERMS: OKind[] = ['YUTORI', 'KOKOROE', 'KAKEIBO'];
+export const MARKET: OKind[] = ['DOWN', 'BR', 'BREATH', 'SWING', 'UP2', 'RUSH', 'CALM', 'DOWN2', 'LIGHT', 'DRAG', 'MEMO', 'FREE', 'REST', 'TREAT', 'CLEAN', ...PERMS, ...CALM_PERMS];
+/** 試作のタイル（「すべて」のセットには入らない．自分で選ぶ・検証のときだけ並ぶ） */
 /** お気に入りの全部（試作を含む） */
 export const ALL_PERMS: OKind[] = [...PERMS, ...CALM_PERMS];
-export const EXPERIMENTAL: OKind[] = ['MOMENTUM', 'BACK', 'STACK', 'SHELF', ...CALM_PERMS];
+export const EXPERIMENTAL: OKind[] = ['MOMENTUM', 'BACK', 'STACK', 'SHELF'];
 /** 市場に並びうる種類の全部（並び順もこの順） */
-export const BUYABLE: OKind[] = [...MARKET, ...EXPERIMENTAL];
+export const BUYABLE: OKind[] = [...MARKET.filter(k => !CALM_PERMS.includes(k)), ...EXPERIMENTAL, ...CALM_PERMS]; // 評価関数の特徴量の並び（v0.6 まで）を変えない
 /** 盤に置くお気に入り（ルール favBoard のとき，取得したら自分の盤の1マスに置く） */
 export const FURN_KINDS: OKind[] = ['BIGDAY', 'ROOMBA'];
 
@@ -184,7 +184,7 @@ export const TILE_SETS: TileSet[] = [
     tiles: ['DOWN', 'SWING', 'FREE', 'MEMO', 'UP2', 'RUSH', 'DOWN2', 'TREAT', 'CLEAN', 'COMPASS', 'BIGDAY'] },
   { id: 'all', label: 'すべて', note: `全${MARKET.length}種類`, tiles: [...MARKET] },
   // ゆとりはセットに入れていない：ためらいを無視する効果は，弱めても持った人の勝率倍率が 2.2〜2.4 になった（作り直しが要る）
-  { id: 'calm', label: 'すべて＋理性のお気に入り（試作）', note: '理性の列でしか取得できないお気に入り2種（家計簿・手放す覚悟）を足す', tiles: [...MARKET, 'KAKEIBO', 'KOKOROE'] },
+  { id: 'calm', label: 'お気に入り5種（v0.6 まで）', note: '理性のお気に入り（ゆとり・手放す覚悟・家計簿）を外す', tiles: MARKET.filter(k => !CALM_PERMS.includes(k)) },
   { id: 'random', label: 'ランダム', note: '片付けたい＋ふつうのタイル7種＋お気に入り2種をくじで', tiles: [] },
 ];
 

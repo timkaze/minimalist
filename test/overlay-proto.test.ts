@@ -8,7 +8,7 @@ import { chooseSearchAction } from '../src/overlay/search';
 import { BINS, FEAT_VERSION, NFEAT, ValueJson, ValueModel, featNames } from '../src/overlay/value';
 
 /** 個々の仕組みを確かめるための土台（v0.5.1 までの既定．今の既定はためらい3枚・目標1つ必須・チップは目標でだけ…） */
-const BASE: Partial<Rules> = { hesCount: 2, goals: 'off', chipGain: 'idle', chipStart: 'none', goalChips: 'one' };
+const BASE: Partial<Rules> = { hesCount: 2, goals: 'off', chipGain: 'idle', chipStart: 'none', goalChips: 'one', favGate: 'none' };
 const game = (rules: Partial<Rules> = {}, market?: OKind[]) => newOverlayGame([{ name: 'A' }, { name: 'B' }], 1, { rules: { ...BASE, ...rules }, market });
 /** 現在の手番の人の袋を，引く順に指定する */
 function stack(s: OState, ...kinds: OKind[]) {
@@ -88,18 +88,19 @@ describe('オーバーレイ版の試作タイル', () => {
 
 describe('理性のお気に入り（試作）とお気に入りの在庫', () => {
   it('理性の列でしか取得できない', () => {
-    const s = game({}, marketFromChoice('calm'));
+    const s = game({}, marketFromChoice('all'));
     stack(s, 'RUSH', 'UP2', 'UP2'); // (1,2)：額 3+1 = 4，衝動1
     for (let i = 0; i < 3; i++) draw(s);
     expect(here(s)).toEqual({ kind: 'buy', amount: 4 });
     stop(s);
     expect(() => applyOverlay(s, 0, { type: 'resolve', buy: ['KAKEIBO'], remove: [] })).toThrow(/理性1以上/);
-    const t = game({}, marketFromChoice('calm'));
+    const t = game({}, marketFromChoice('all'));
     stack(t, 'DOUBT', 'TREAT'); // 理性1の列でご褒美（額4）を置いてその上で止まる
     draw(t); draw(t); stop(t);
     applyOverlay(t, 0, { type: 'resolve', buy: ['KAKEIBO'], remove: [] });
     expect(t.players[0].perms).toEqual(['KAKEIBO']);
-    expect(marketFromChoice('calm')).not.toContain('YUTORI'); // ゆとりは強すぎたのでセットから外してある
+    expect(marketFromChoice('all')).toContain('YUTORI'); // v0.7 から「すべて」に理性のお気に入り3種が入る
+    expect(marketFromChoice('calm')).not.toContain('KAKEIBO');
   });
 
   it('ゆとり：その手番の1枚目のためらいでは止まらない（2枚目で止まる）', () => {
@@ -196,7 +197,8 @@ describe('理性のお気に入り（試作）とお気に入りの在庫', () =
     const s = atBuy({ favGate: 'display', favOne: true });
     const shown = (Object.keys(s.market) as OKind[]).filter(k => isPerm(k) && s.market[k]! > 0);
     expect(shown.length).toBe(2);
-    const next = s.favQueue![0].kind;
+    const next = s.favQueue![0].kind, q0 = s.favQueue!.length;
+    expect(q0).toBe((Object.keys(s.market) as OKind[]).filter(isPerm).length - 2);
     const cheap = shown.find(k => TILES[k].cost! <= here(s).amount && canBuyAt(k, s.players[0].pos.x, s.rules));
     if (cheap) {
       applyOverlay(s, 0, { type: 'resolve', buy: [cheap], remove: [] });
@@ -204,7 +206,7 @@ describe('理性のお気に入り（試作）とお気に入りの在庫', () =
       expect((Object.keys(s.market) as OKind[]).filter(k => isPerm(k) && s.market[k]! > 0).length).toBe(2);
     }
     s.market.UP2 = 1; // 普通のタイルの売り切れでは出ない
-    expect(s.favQueue!.length).toBe(cheap ? 2 : 3);
+    expect(s.favQueue!.length).toBe(q0 - (cheap ? 1 : 0));
   });
 
   it('並びを流す：額1か◆1で，並んだ2枚を山の底へ流して次の2枚', () => {
@@ -251,12 +253,12 @@ describe('理性のお気に入り（試作）とお気に入りの在庫', () =
 });
 
 describe('目標', () => {
-  it('今の既定：ためらい3枚・目標1つ必須・チップは目標でだけ（難しさ別）・はじめのチップは手番順', () => {
+  it('今の既定：ためらい3枚・目標1つ必須・チップは目標でだけ（難しさ別）・はじめのチップは全員1枚・お気に入りは2枚並べ', () => {
     const s = newOverlayGame([{ name: 'A' }, { name: 'B' }], 1);
     expect(s.goals!.length).toBe(3);
     expect(s.players[0].bag.filter(t => t.kind === 'HES').length).toBe(3);
-    expect(s.players.map(p => p.chips)).toEqual([0, 1]);
-    expect(s.rules).toMatchObject({ goals: 'need1', chipGain: 'goal', goalChips: 'tiered' });
+    expect(s.players.map(p => p.chips)).toEqual([1, 1]);
+    expect(s.rules).toMatchObject({ goals: 'need1', chipGain: 'goal', goalChips: 'tiered', favGate: 'display', favFlush: 1, chipStart: 'one' });
   });
 
   it('3枚めくられ，止まり方が条件を満たすと達成して決心チップをもらう', () => {
