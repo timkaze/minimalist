@@ -1,0 +1,11 @@
+== fav_flush1_chip1_pool7: OV_TILES= RULES={"favGate":"display","favFlush":1,"chipStart":"one"} SET=all+YUTORI,KAKEIBO
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp2/training/overlay-runs/fit_exp_fav_flush1_chip1_pool7
+[1] データ 130942行（作成 325秒，終わらなかった人 7.7%）学習 2秒  検証 CE 1.987  手番数の誤差 3.79（平均で当てた場合 8.81）
+[2] データ 284106行（作成 299秒，終わらなかった人 29.9%）学習 3秒  検証 CE 1.880  手番数の誤差 6.29（平均で当てた場合 13.12）
+[3] データ 414046行（作成 331秒，終わらなかった人 9.3%）学習 4秒  検証 CE 1.966  手番数の誤差 5.89（平均で当てた場合 12.04）
+[4] データ 534883行（作成 278秒，終わらなかった人 5.6%）学習 5秒  検証 CE 1.963  手番数の誤差 5.44（平均で当てた場合 11.26）
+保存 /home/tomida/git/mo-exp2/training/overlay-runs/exp_fav_flush1_chip1_pool7/value_last.json（計 1247秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp2/training/overlay-runs/fit_exp_fav_flush1_chip1_pool7
+[refit] データ 534883行  検証 CE 1.954  手番数の誤差 5.28（平均で当てた場合 11.26）
+保存 /home/tomida/git/mo-exp2/training/overlay-runs/exp_fav_flush1_chip1_pool7/value.json
+== done fav_flush1_chip1_pool7
