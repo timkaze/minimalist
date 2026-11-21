@@ -23,6 +23,7 @@ export function publicState(s: SState): SState {
   const v: SState = structuredClone(s);
   v.rng = 0;
   for (const p of v.players) p.bag = p.bag.map(c => ({ ...c, id: 0 })).sort((a, b) => a.kind.localeCompare(b.kind));
+  v.favQueue?.sort((a, b) => a.kind.localeCompare(b.kind)); // お気に入りの山も順番を隠す
   return v;
 }
 
