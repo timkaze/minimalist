@@ -21,6 +21,8 @@ export const yMax = (b: OBoard) => b.buy.length;
 export const yMin = (b: OBoard) => -b.remove.length;
 export const isDeep = (y: number, b: OBoard) => y === yMin(b);
 export const MAX_ROUNDS = 60;
+/** favGate display のとき並べるお気に入りの数 */
+export const FAV_DISPLAY = 2;
 export const UNLIMITED = 99;
 /** 中央の行（START 以外）の額 */
 export const MID_BUY = 2;
@@ -85,8 +87,8 @@ export interface Rules {
   favStock4: 1 | 2;
   /** お気に入りを取得できる最初のラウンド */
   favFrom: 1 | 2;
-  /** お気に入りの出し方：none／removed＝1枚以上排除した人だけ／sale＝発売直後は高い（1R+2・2R+1）／restock＝普通のタイルが売り切れるたびに1種入荷 */
-  favGate: 'none' | 'removed' | 'sale' | 'restock';
+  /** お気に入りの出し方：display＝山から2枚だけ並べ，取られたら次を1枚出す／none／removed＝1枚以上排除した人だけ／sale＝発売直後は高い（1R+2・2R+1）／restock＝普通のタイルが売り切れるたびに1種入荷 */
+  favGate: 'none' | 'removed' | 'sale' | 'restock' | 'display';
 }
 export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 3, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: true, goals: 'need1', chipGain: 'goal', chipStart: 'seat', goalChips: 'tiered', favCap: 0, dropChips: false, favStock4: 1, favFrom: 1, favGate: 'none' };
 
@@ -119,7 +121,7 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
     dropChips: bool(x.dropChips, d.dropChips),
     favStock4: x.favStock4 === 2 || x.favStock4 === 1 ? x.favStock4 : d.favStock4,
     favFrom: x.favFrom === 2 || x.favFrom === 1 ? x.favFrom : d.favFrom,
-    favGate: x.favGate === 'removed' || x.favGate === 'sale' || x.favGate === 'restock' || x.favGate === 'none' ? x.favGate : d.favGate,
+    favGate: x.favGate === 'removed' || x.favGate === 'sale' || x.favGate === 'restock' || x.favGate === 'display' || x.favGate === 'none' ? x.favGate : d.favGate,
     goals: x.goals === 'bonus' || x.goals === 'need1' || x.goals === 'need2' || x.goals === 'off' ? x.goals : d.goals,
   };
 }
@@ -371,11 +373,12 @@ export function newOverlayGame(
     board: OBOARDS[rules.board], rules, gacha: GACHA_POOL.flatMap(([k, n]) => Array.from({ length: n }, () => k)),
   };
   for (const k of opts.market ?? MARKET) s.market[k] = UNLIMITED_KINDS.includes(k) ? UNLIMITED : rules.favOne && isPerm(k) ? (setup.length >= 4 ? rules.favStock4 : 1) : Math.max(2, setup.length);
-  if (rules.favGate === 'restock') {
+  if (rules.favGate === 'restock' || rules.favGate === 'display') {
     const q = (Object.keys(s.market) as OKind[]).filter(isPerm);
     shuffle(q, s);
-    s.favQueue = q.map(k => ({ kind: k, n: s.market[k]! }));
-    for (const k of q) s.market[k] = 0;
+    const shown = rules.favGate === 'display' ? FAV_DISPLAY : 0;
+    s.favQueue = q.slice(shown).map(k => ({ kind: k, n: s.market[k]! }));
+    for (const k of q.slice(shown)) s.market[k] = 0;
   }
   for (const p of setup) {
     const bag: Tile[] = [];
@@ -575,7 +578,7 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
   const restocked: OKind[] = [];
   for (const k of a.buy) {
     if (!UNLIMITED_KINDS.includes(k)) s.market[k]!--;
-    if (s.favQueue?.length && !isPerm(k) && s.market[k] === 0) { const f = s.favQueue.shift()!; s.market[f.kind] = f.n; restocked.push(f.kind); }
+    if (s.favQueue?.length && (s.rules.favGate === 'display' ? isPerm(k) : !isPerm(k) && s.market[k] === 0)) { const f = s.favQueue.shift()!; s.market[f.kind] = f.n; restocked.push(f.kind); }
     if (isPerm(k)) p.perms.push(k);
     else p.discard.push({ id: s.nextId++, kind: k });
     p.bought++;

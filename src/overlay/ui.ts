@@ -173,7 +173,7 @@ const RULE_OPTS: { key: keyof Rules; label: string; choices: [string, string][] 
   { key: 'favOne', label: 'お気に入りの在庫', choices: [['true', '各1枚（取り合い）'], ['false', '人数ぶん（2枚以上）']] },
   { key: 'favStock4', label: '4人戦のお気に入りの在庫（各1枚のとき）', choices: [['1', '各1枚'], ['2', '各2枚']] },
   { key: 'favFrom', label: 'お気に入りを取得できるのは', choices: [['1', '1ラウンド目から'], ['2', '2ラウンド目から']] },
-  { key: 'favGate', label: 'お気に入りの出会い方', choices: [['none', 'いつでも'], ['removed', '1枚以上手放してから（手放して好きな物が分かる）'], ['sale', '発売直後は高い（1ラウンド目+2・2ラウンド目+1）'], ['restock', '普通のタイルが売り切れるたびに1種入荷']] },
+  { key: 'favGate', label: 'お気に入りの出会い方', choices: [['none', 'いつでも'], ['removed', '1枚以上手放してから（手放して好きな物が分かる）'], ['sale', '発売直後は高い（1ラウンド目+2・2ラウンド目+1）'], ['restock', '普通のタイルが売り切れるたびに1種入荷'], ['display', '山から2枚だけ並べ，取られたら次を1枚']] },
   { key: 'carry', label: '量を運ぶタイル', choices: [['true', 'あり（「運ぶ +n」のタイルは，盤にあるあいだ止まったマスの量 +n）'], ['false', 'なし（v0.4 まで）']] },
   { key: 'bigBag', label: '初期の袋', choices: [['false', 'ふつう（欲しい2・迷い1・ガラクタ1＋ためらい）'], ['true', '多め（欲しい3・迷い2・ガラクタ2＋ためらい）']] },
   { key: 'special', label: '特別なマス', choices: [['true', 'あり（捨欲の中の額マス・福袋・運試し）'], ['false', 'なし']] },
@@ -260,7 +260,7 @@ function rulesHTML() {
     <li>タイルの四隅：左上＝コスト，右上＝取得の条件（衝n＝衝動n以上の列），左下＝捨てる重さ，右下＝排除の条件（理n＝理性n以上の列）</li>
     <li><b>決心チップ</b>（◆）：${R().chipGain === 'goal' ? '目標を達成したときに1枚もらう（3枚まで）．' : '1枚も排除できなかった手番の終わりに1枚もらう（3枚まで）．'}${R().chipStart === 'one' ? 'はじめに全員1枚持つ．' : R().chipStart === 'seat' || R().chipStart === 'wide' || R().chipStart === 'narrow' ? (R().chipStart === 'wide' ? 'はじめに手番順で0・1・2・3枚持つ（2・3人の卓は2枚まで）．' : R().chipStart === 'narrow' ? 'はじめに手番順で0・1・2・2枚持つ（4人の卓は0・1・1・2枚）．' : 'はじめに手番順で0・1・2・2枚持つ（後の手番ほど多い）．') : ''}量のマスで排除するとき，1枚で「重さ1の肩代わり」か「理性の条件1段階の免除」に使える．足りない分だけ自動で使う</li>
     <li>高いものは<b>衝動の列でないと取得できない</b>，思い入れのあるものは<b>理性の列でないと排除できない</b>（タイルの説明に書いてあります）</li>
-    <li>★お気に入りは取得したら自分の前に置き，効果がずっと続きます（袋に入らない．${R().favOne ? '各1枚．先に取った人のもの' + (R().favStock4 === 2 ? '（4人戦は各2枚）' : '') : '人数ぶん'}${R().favFrom === 2 ? '．2ラウンド目から取得できる' : ''}${R().favGate === 'removed' ? '．1枚以上排除した人だけが取得できる' : R().favGate === 'sale' ? '．発売直後は高い（1ラウンド目はコスト+2，2ラウンド目は+1）' : R().favGate === 'restock' ? '．はじめは並んでいない．普通のタイルが1種売り切れるたびに1種入荷する' : ''}${R().favCap ? `．<b>1人${R().favCap}枚まで</b>` : ''}）</li>
+    <li>★お気に入りは取得したら自分の前に置き，効果がずっと続きます（袋に入らない．${R().favOne ? '各1枚．先に取った人のもの' + (R().favStock4 === 2 ? '（4人戦は各2枚）' : '') : '人数ぶん'}${R().favFrom === 2 ? '．2ラウンド目から取得できる' : ''}${R().favGate === 'removed' ? '．1枚以上排除した人だけが取得できる' : R().favGate === 'sale' ? '．発売直後は高い（1ラウンド目はコスト+2，2ラウンド目は+1）' : R().favGate === 'restock' ? '．はじめは並んでいない．普通のタイルが1種売り切れるたびに1種入荷する' : R().favGate === 'display' ? '．山から2枚だけ並べ，取られたら山から次を1枚並べる' : ''}${R().favCap ? `．<b>1人${R().favCap}枚まで</b>` : ''}）</li>
     ${R().dropChips && R().chips ? '<li><b>手放すと◆</b>：緑の印のタイルは，排除したときに決心チップを1枚もらえる（「理で手放すと◆」は理性の列で排除したときだけ）</li>' : ''}
     ${R().lastCard ? '' : '<li><b>最後の1枚も，量のマスで排除</b>しないと達成になりません（重さ・条件もふつうどおり．決心チップは使えます）．↑や→のタイルが最後に残ると捨てに行けないので，終わり方を考えて残すタイルを選びます</li>'}
     ${R().goals === 'off' ? '' : `<li><b>目標</b>：はじめに目標を3枚めくります（全員共通）．止まり方が条件を満たしたら達成で，決心チップを${R().goalChips === 'tiered' ? '目標ごとに書かれた枚数（難しさに応じて1〜3枚）' : '1枚'}もらいます（1人1回ずつ）${goalNeed(R()) ? `．<b>${goalNeed(R())}つ達成するまで，最後の1枚は手放せません</b>` : ''}</li>`}
@@ -449,7 +449,7 @@ function hereHTML(p: OPlayer): string {
 /** left：取得フェイズで残っている額（これより高いタイルは暗くする） */
 function marketHTML(buying: boolean, x = 0, left = Infinity): string {
   const st = s!;
-  return Object.entries(st.market).map(([k, n]) => {
+  return Object.entries(st.market).filter(([k]) => !(st.rules.favGate === 'display' && st.favQueue?.some(f => f.kind === k))).map(([k, n]) => { // 山のお気に入りは見せない
     const kind = k as OKind;
     const chosen = sel.buy.filter(y => y === kind).length;
     const stock = (n ?? 0) - chosen;

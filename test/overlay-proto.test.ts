@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BUYABLE, OKind, marketFromChoice } from '../src/overlay/tiles';
+import { BUYABLE, OKind, TILES, isPerm, marketFromChoice } from '../src/overlay/tiles';
 import { dropChipOf } from '../src/overlay/tiles';
-import { OState, Rules, UNLIMITED, applyOverlay, hereFx, newOverlayGame, ownedTiles } from '../src/overlay/engine';
+import { OState, Rules, UNLIMITED, applyOverlay, canBuyAt, hereFx, newOverlayGame, ownedTiles } from '../src/overlay/engine';
 import { OPRESETS, chooseOverlayAction, playOverlayTurn } from '../src/overlay/bot';
 import { chooseSearchAction } from '../src/overlay/search';
 import { BINS, FEAT_VERSION, NFEAT, ValueJson, ValueModel, featNames } from '../src/overlay/value';
@@ -189,6 +189,21 @@ describe('理性のお気に入り（試作）とお気に入りの在庫', () =
     s.round = 3;
     applyOverlay(s, 0, { type: 'resolve', buy: ['KODAWARI'], remove: [] });
     expect(s.players[0].perms).toContain('KODAWARI');
+  });
+
+  it('favGate=display：お気に入りは2枚だけ並び，取られたら山から次の1枚', () => {
+    const s = atBuy({ favGate: 'display', favOne: true });
+    const shown = (Object.keys(s.market) as OKind[]).filter(k => isPerm(k) && s.market[k]! > 0);
+    expect(shown.length).toBe(2);
+    const next = s.favQueue![0].kind;
+    const cheap = shown.find(k => TILES[k].cost! <= here(s).amount && canBuyAt(k, s.players[0].pos.x, s.rules));
+    if (cheap) {
+      applyOverlay(s, 0, { type: 'resolve', buy: [cheap], remove: [] });
+      expect(s.market[next]).toBe(1);
+      expect((Object.keys(s.market) as OKind[]).filter(k => isPerm(k) && s.market[k]! > 0).length).toBe(2);
+    }
+    s.market.UP2 = 1; // 普通のタイルの売り切れでは出ない
+    expect(s.favQueue!.length).toBe(cheap ? 2 : 3);
   });
 
   it('favGate=restock：お気に入りは並んでおらず，普通のタイルが売り切れると1種入荷', () => {
