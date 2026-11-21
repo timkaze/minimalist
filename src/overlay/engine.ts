@@ -89,8 +89,10 @@ export interface Rules {
   favFrom: 1 | 2;
   /** お気に入りの出し方：display＝山から2枚だけ並べ，取られたら次を1枚出す／none／removed＝1枚以上排除した人だけ／sale＝発売直後は高い（1R+2・2R+1）／restock＝普通のタイルが売り切れるたびに1種入荷 */
   favGate: 'none' | 'removed' | 'sale' | 'restock' | 'display';
+  /** 並びを流す（favGate display のとき）：額のマスで，額 favFlush か決心チップ1枚で，並んだお気に入りを全部山の底へ流して次を並べる．0 なら流せない */
+  favFlush: 0 | 1 | 2;
 }
-export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 3, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: true, goals: 'need1', chipGain: 'goal', chipStart: 'seat', goalChips: 'tiered', favCap: 0, dropChips: false, favStock4: 1, favFrom: 1, favGate: 'none' };
+export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 3, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: true, goals: 'need1', chipGain: 'goal', chipStart: 'seat', goalChips: 'tiered', favCap: 0, dropChips: false, favStock4: 1, favFrom: 1, favGate: 'none', favFlush: 1 };
 
 /** 外から来たルールを整える（不正な値は既定に） */
 export function normRules(r: Partial<Rules> | undefined | null): Rules {
@@ -121,6 +123,7 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
     dropChips: bool(x.dropChips, d.dropChips),
     favStock4: x.favStock4 === 2 || x.favStock4 === 1 ? x.favStock4 : d.favStock4,
     favFrom: x.favFrom === 2 || x.favFrom === 1 ? x.favFrom : d.favFrom,
+    favFlush: x.favFlush === 0 || x.favFlush === 1 || x.favFlush === 2 ? x.favFlush : d.favFlush,
     favGate: x.favGate === 'removed' || x.favGate === 'sale' || x.favGate === 'restock' || x.favGate === 'display' || x.favGate === 'none' ? x.favGate : d.favGate,
     goals: x.goals === 'bonus' || x.goals === 'need1' || x.goals === 'need2' || x.goals === 'off' ? x.goals : d.goals,
   };
@@ -317,6 +320,9 @@ export interface OPlayer {
   /** 使い切って市場へ戻したタイル（種類）．排除の数には入らない */
   used?: OKind[];
   bought: number;
+  /** この手番に並びを流すのに使った額・回数 */
+  flushSpent?: number;
+  flushes?: number;
   finished: boolean;
   /** 決心チップ */
   chips: number;
@@ -360,7 +366,9 @@ export type OAction =
   | { type: 'branch'; dir: Dir }
   /** roomba：ルンバで排除する1枚 */
   /** place：盤に置くお気に入りを取得したときの置き場所（省略したら止まったマス．置けなければ START に近い空きマス） */
-  | { type: 'resolve'; buy: OKind[]; remove: number[]; roomba?: number; place?: Furn[] };
+  | { type: 'resolve'; buy: OKind[]; remove: number[]; roomba?: number; place?: Furn[] }
+  /** 並んだお気に入りを流す（額のマスで止まったあと．pay：額で払う／決心チップで払う） */
+  | { type: 'flush'; pay: 'buy' | 'chip' };
 
 export class ORuleError extends Error {}
 
@@ -493,7 +501,38 @@ export function applyOverlay(s: OState, seat: number, a: OAction): void {
       resolve(s, p, a);
       return;
     }
+    case 'flush': {
+      if (s.turn !== 'resolve') throw new ORuleError('まだ止まっていません');
+      flushFav(s, p, a.pay);
+      return;
+    }
   }
+}
+
+/** 並んでいるお気に入り（favGate display） */
+export const favShown = (s: OState) => (Object.keys(s.market) as OKind[]).filter(k => isPerm(k) && s.market[k]! > 0 && !s.favQueue?.some(f => f.kind === k));
+/** 並びを流せるか（できないなら理由） */
+export function flushProblem(s: OState, p: OPlayer, pay: 'buy' | 'chip'): string | null {
+  if (s.rules.favGate !== 'display' || !s.rules.favFlush) return 'このルールでは流せません';
+  const fx = hereFx(s, p);
+  if (fx.kind !== 'buy') return '額のマスでしか流せません';
+  if (!s.favQueue?.length) return '山が空です';
+  if (pay === 'chip') return s.rules.chips && (p.chips ?? 0) >= 1 ? null : '決心チップがありません';
+  return (p.flushSpent ?? 0) + s.rules.favFlush <= fx.amount ? null : '額が足りません';
+}
+/** 並んだお気に入りを全部山の底へ流し，山から同じ数だけ並べる */
+function flushFav(s: OState, p: OPlayer, pay: 'buy' | 'chip'): void {
+  const why = flushProblem(s, p, pay);
+  if (why) throw new ORuleError(why);
+  const shown = favShown(s);
+  const q = s.favQueue!;
+  for (const k of shown) { q.push({ kind: k, n: s.market[k]! }); s.market[k] = 0; }
+  const n = Math.max(shown.length, Math.min(FAV_DISPLAY, q.length));
+  const got = q.splice(0, n);
+  for (const f of got) s.market[f.kind] = f.n;
+  if (pay === 'chip') p.chips--; else p.flushSpent = (p.flushSpent ?? 0) + s.rules.favFlush;
+  p.flushes = (p.flushes ?? 0) + 1;
+  s.log.push(`${p.name}：お気に入りの並びを流した（${pay === 'chip' ? '決心チップ1枚' : '額' + s.rules.favFlush}）→「${got.map(f => TILES[f.kind].name).join('」「')}」が並んだ`);
 }
 
 function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roomba?: number; place?: Furn[] }): void {
@@ -515,7 +554,7 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
     need[k] = (need[k] ?? 0) + 1;
   }
   for (const [k, n] of Object.entries(need)) if ((s.market[k as OKind] ?? 0) < n!) throw new ORuleError(`${TILES[k as OKind].name}は売り切れです`);
-  if (power.kind === 'buy' && total > power.amount) throw new ORuleError(`額${power.amount}を超えています`);
+  if (power.kind === 'buy' && total + (p.flushSpent ?? 0) > power.amount) throw new ORuleError(`額${power.amount}を超えています${p.flushSpent ? `（流すのに${p.flushSpent}使用）` : ''}`);
 
   const ids = [...new Set(a.remove)];
   const fromFlow = ids.map(id => p.placed.find(c => c.id === id)).filter(Boolean) as Tile[];
@@ -656,6 +695,8 @@ function endTurn(s: OState, p: OPlayer): void {
   p.placed = [];
   p.pos = { x: 0, y: 0 };
   p.hes = 0;
+  p.flushSpent = 0;
+  p.flushes = 0;
   p.roll = null;
   p.rollKinds = [];
   p.rollIds = [];

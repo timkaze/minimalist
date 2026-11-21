@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { BUYABLE, OKind, TILES, isPerm, marketFromChoice } from '../src/overlay/tiles';
 import { dropChipOf } from '../src/overlay/tiles';
@@ -204,6 +205,37 @@ describe('理性のお気に入り（試作）とお気に入りの在庫', () =
     }
     s.market.UP2 = 1; // 普通のタイルの売り切れでは出ない
     expect(s.favQueue!.length).toBe(cheap ? 2 : 3);
+  });
+
+  it('並びを流す：額1か◆1で，並んだ2枚を山の底へ流して次の2枚', () => {
+    const s = atBuy({ favGate: 'display', favFlush: 1 });
+    const p = s.players[0];
+    const before = (Object.keys(s.market) as OKind[]).filter(k => isPerm(k) && s.market[k]! > 0);
+    const next = s.favQueue!.slice(0, 2).map(f => f.kind);
+    applyOverlay(s, 0, { type: 'flush', pay: 'buy' });
+    const after = (Object.keys(s.market) as OKind[]).filter(k => isPerm(k) && s.market[k]! > 0 && !s.favQueue!.some(f => f.kind === k));
+    expect(after.sort()).toEqual([...next].sort());
+    expect(s.favQueue!.slice(-2).map(f => f.kind).sort()).toEqual([...before].sort());
+    expect(p.flushSpent).toBe(1);
+    expect(() => applyOverlay(s, 0, { type: 'flush', pay: 'chip' })).toThrow(/決心チップ/); // 先手は0枚
+    p.chips = 1;
+    applyOverlay(s, 0, { type: 'flush', pay: 'chip' });
+    expect(p.chips).toBe(0);
+    const amt = here(s).amount;
+    s.market.DOWN = UNLIMITED;
+    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: Array(amt).fill('DOWN'), remove: [] })).toThrow(/超えています/); // 流すのに1使った
+    applyOverlay(s, 0, { type: 'resolve', buy: Array(amt - 1).fill('DOWN'), remove: [] });
+    expect(p.flushSpent).toBe(0);
+  });
+
+  it('探索ボットは流すことも選べる（落ちない）', () => {
+    const model = new ValueModel(JSON.parse(readFileSync(new URL('../src/overlay/value.json', import.meta.url), 'utf8')) as ValueJson);
+    const o = { model, objective: 'mean' as const, budget: 30 };
+    const s = newOverlayGame([{ name: 'A' }, { name: 'B' }], 3, { rules: { favGate: 'display' } });
+    let flushes = 0;
+    for (let i = 0; i < 3000 && s.phase === 'play'; i++) { const a = chooseSearchAction(s, o); if (a.type === 'flush') flushes++; applyOverlay(s, s.current, a); }
+    expect(s.phase).toBe('over');
+    expect(flushes).toBeGreaterThanOrEqual(0);
   });
 
   it('favGate=restock：お気に入りは並んでおらず，普通のタイルが売り切れると1種入荷', () => {

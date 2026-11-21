@@ -8,7 +8,7 @@ import { ALL_PERMS as PERMS, BUYABLE, Dir, FURN_KINDS, OKind, TILES, UNLIMITED_K
 import {
   Env, Furn, MAX_CHIPS, OAction, OPlayer, OState, Placed, Pos, Rules, Tile, X_MAX, X_MIN, canBuyAt, canDraw, canDropAt, canMove, canPlaceFurn, chipNeed,
   dirsOf, discardLimit, GOAL_KINDS, goalReward, effectAt, envOf, exitPos, goalMet, goalNeed, hasGlobal, isDeep, isLastCard, ownedTiles, samePos, yMax, yMin,
-  priceOf, favLocked,
+  priceOf, favLocked, applyOverlay, flushProblem, FAV_DISPLAY,
 } from './engine';
 import { BAG_KINDS, BINS, GOAL_BIT, KIDX, MIDX, NFEAT, NK, NM, ValueModel, boardExt, countsOf, featOfPlayer, fillFeat, goalMask, kindWeights, permMaskOf, popcount, stockOf } from './value';
 
@@ -73,11 +73,11 @@ class Turn {
   private readonly buyShort = new Map<string, OKind[][]>();
   private readonly extCache = new Map<string, Ext>();
   private readonly places = new Map<OKind, Pos[]>();
-  readonly round: number; readonly seat: number;
+  readonly round: number; readonly seat: number; readonly flushes: number;
 
   constructor(readonly s: OState, readonly o: SearchOpts) {
     const p = this.p = s.players[s.current];
-    this.round = s.round; this.seat = s.current;
+    this.round = s.round; this.seat = s.current; this.flushes = p.flushes ?? 0;
     this.env = envOf(s, p); this.rules = s.rules;
     if (s.rules.dropChips && s.rules.chips) this.dropW = BAG_KINDS.map(k => DROP_CHIP[k]);
     this.chips = s.rules.chips ? p.chips ?? 0 : 0;
@@ -459,7 +459,8 @@ class Turn {
     switch (fx.kind) {
       case 'buy': {
         const lvl = Math.max(-2, Math.min(2, x)); // 取得の条件は衝動2・理性2まで
-        const opts = exact ? this.buyOptions(fx.amount, lvl) : this.shortBuy(fx.amount, lvl);
+        const amt = exact ? fx.amount - (p.flushSpent ?? 0) : fx.amount; // 並びを流すのに使った額は引く
+        const opts = exact ? this.buyOptions(amt, lvl) : this.shortBuy(amt, lvl);
         if (exact && this.o.epsBuy && this.o.rand && this.o.rand() < this.o.epsBuy) {
           const b = opts[Math.floor(this.o.rand() * opts.length)];
           return { u: this.buyValue(b, node.bag, discP, st.base, st), buy: b, flow: null, roomba: -1, disc: null, place: this.placeOf(b) };
@@ -598,7 +599,7 @@ class Turn {
 const turns = new WeakMap<OState, Turn>();
 function turnOf(s: OState, o: SearchOpts): Turn {
   let t = turns.get(s);
-  if (!t || t.round !== s.round || t.seat !== s.current || t.o !== o || t.p !== s.players[s.current]) turns.set(s, t = new Turn(s, o));
+  if (!t || t.round !== s.round || t.seat !== s.current || t.o !== o || t.p !== s.players[s.current] || t.flushes !== (s.players[s.current].flushes ?? 0)) turns.set(s, t = new Turn(s, o));
   return t;
 }
 
@@ -614,6 +615,35 @@ function pick(from: Tile[], counts: number[] | null, skip: Set<number>): number[
   return out;
 }
 
+/** 並びを流すか：流したあとに並ぶ2枚（山の中身から何通りか）の平均が，今の一番良い選び方より良ければ流す */
+function flushChoice(s: OState, o: SearchOpts, base: number): OAction | null {
+  const p = s.players[s.current];
+  if (s.rules.favGate !== 'display' || !s.rules.favFlush || (p.flushes ?? 0) >= 2 || !s.favQueue?.length) return null;
+  const pays = (['buy', 'chip'] as const).filter(pay => !flushProblem(s, p, pay));
+  if (!pays.length) return null;
+  // 山の順番は知らないので，山の中身から次に並ぶ組を何通りか作る（多ければ先頭から6通り）
+  const hidden = s.favQueue.map(f => f.kind), n = Math.min(FAV_DISPLAY, hidden.length);
+  const sets: OKind[][] = [];
+  if (n === 1) for (const k of hidden) sets.push([k]);
+  else for (let i = 0; i < hidden.length; i++) for (let j = i + 1; j < hidden.length; j++) sets.push([hidden[i], hidden[j]]);
+  const pickSets = sets.length > 6 ? Array.from({ length: 6 }, (_, i) => sets[Math.floor((i * sets.length) / 6)]) : sets;
+  let best: OAction | null = null, bv = base + 1e-3;
+  for (const pay of pays) {
+    let sum = 0;
+    for (const set of pickSets) {
+      const s2: OState = structuredClone(s);
+      const rest = s2.favQueue!.filter(f => !set.includes(f.kind));
+      s2.favQueue = [...set.map(k => s2.favQueue!.find(f => f.kind === k)!), ...rest];
+      applyOverlay(s2, s2.current, { type: 'flush', pay });
+      const t2 = new Turn(s2, o);
+      sum += t2.plan(t2.root(), true).u;
+    }
+    const v = sum / pickSets.length;
+    if (v > bv) { bv = v; best = { type: 'flush', pay }; }
+  }
+  return best;
+}
+
 export function chooseSearchAction(s: OState, o: SearchOpts): OAction {
   const p = s.players[s.current];
   const t = turnOf(s, o);
@@ -621,6 +651,8 @@ export function chooseSearchAction(s: OState, o: SearchOpts): OAction {
     case 'resolve': {
       if (s.rules.lastCard && isLastCard(p) && t.need <= popcount(t.g0)) return { type: 'resolve', buy: [], remove: [p.placed[0].id] };
       const pl = t.plan(t.root(), true);
+      const fl = flushChoice(s, o, pl.u);
+      if (fl) return fl;
       const used = new Set<number>(p.rollIds ?? []);
       // 盤のルンバが吸うタイル（そのマスに最初に置いたもの）は，選んで排除する対象から外しておく
       if (t.roombaPos) { const rp = t.roombaPos; const first = p.placed.find(c => samePos(c.pos, rp)); if (first && !TILES[first.kind].stay) used.add(first.id); }

@@ -28,6 +28,10 @@ export interface PRec {
   bought: Partial<Record<OKind, number>>;
   gacha: number; perms: OKind[]; permRound: Partial<Record<OKind, number>>;
   chipsUsed: number; chipsGot: number;
+  /** お気に入りの並びを流した回数 */
+  flushes?: number;
+  /** 目標を達成したラウンド（達成順） */
+  goalRounds?: number[];
   /** 達成した目標 */
   goals: string[];
 }
@@ -79,10 +83,15 @@ export function playGame(agents: Agent[], who: string[], seed: number, o: PlayOp
       }
       if (kind === 'gacha' && s.gacha.length) p[seat].gacha++;
       const before = pl.chips ?? 0;
+      const g0 = pl.goals?.length ?? 0, r0 = s.round;
       applyOverlay(s, seat, a);
+      for (let i = g0; i < (pl.goals?.length ?? 0); i++) (p[seat].goalRounds ??= []).push(r0);
       const d = (pl.chips ?? 0) - before;
       if (d > 0) p[seat].chipsGot += d; else p[seat].chipsUsed -= d;
-    } else applyOverlay(s, seat, a);
+    } else {
+      if (a.type === 'flush') { p[seat].flushes = (p[seat].flushes ?? 0) + 1; if (a.pay === 'chip') p[seat].chipsUsed++; }
+      applyOverlay(s, seat, a);
+    }
   }
   if (s.phase === 'play') throw new Error('試合が終わりません');
   g.round = s.round; g.win = s.winners;
