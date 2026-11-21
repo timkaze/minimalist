@@ -5,6 +5,7 @@ import { Dir, OKind, TILES, isPerm, weightOf, condFree, lockedOnBoard } from './
 import {
   Env, OAction, OPlayer, OState, Tile, Walk, applyOverlay, canBuyAt, canDraw, canDropAt, chipNeed, dirsOf, discardLimit, effectAt, envOf, hereFx,
   goalNeed, hasGlobal, isDeep, isLastCard, leaveTile, ownedTiles, putTile,
+  priceOf, favLocked,
 } from './engine';
 
 export interface OGenome {
@@ -61,10 +62,10 @@ export function planBuy(c: Ctx, budget: number, x: number): { buy: OKind[]; valu
   const buy: OKind[] = [];
   let value = 0, left = budget;
   c.g.buy.forEach(({ kind, cap }, i) => {
-    const cost = TILES[kind].cost ?? 99;
+    const cost = priceOf(kind, c.s);
     let n = have(kind);
     let stock = canBuyAt(kind, x, c.s.rules) ? c.s.market[kind] ?? 0 : 0;
-    if (isPerm(kind) && c.s.round < c.s.rules.favFrom) stock = 0;
+    if (favLocked(kind, c.s, c.p)) stock = 0;
     if (isPerm(kind) && c.s.rules.favCap && c.p.perms.length + buy.filter(isPerm).length >= c.s.rules.favCap) stock = 0; // お気に入りの上限
     while (n < cap && stock > 0 && cost <= left) {
       buy.push(kind);

@@ -153,6 +153,8 @@ describe('理性のお気に入り（試作）とお気に入りの在庫', () =
     expect(four({ favStock4: 2 }).market.BIGDAY).toBe(2);
     expect(four({ chipStart: 'wide' }).players.map(p => p.chips)).toEqual([0, 1, 2, 3]);
     expect(newOverlayGame([{ name: 'A' }, { name: 'B' }, { name: 'C' }], 1, { rules: { chipStart: 'wide' } }).players.map(p => p.chips)).toEqual([0, 1, 2]);
+    expect(four({ chipStart: 'narrow' }).players.map(p => p.chips)).toEqual([0, 1, 1, 2]);
+    expect(newOverlayGame([{ name: 'A' }, { name: 'B' }, { name: 'C' }], 1, { rules: { chipStart: 'narrow' } }).players.map(p => p.chips)).toEqual([0, 1, 2]);
   });
 
   it('favFrom=2：1ラウンド目はお気に入りを取得できない', () => {
@@ -161,6 +163,43 @@ describe('理性のお気に入り（試作）とお気に入りの在庫', () =
     for (let i = 0; i < 3; i++) draw(s);
     stop(s);
     expect(() => applyOverlay(s, 0, { type: 'resolve', buy: ['KODAWARI'], remove: [] })).toThrow(/2ラウンド目から/);
+  });
+
+  const atBuy = (rules: Partial<Rules>) => {
+    const s = game(rules);
+    stack(s, 'UP2', 'RUSH', 'WANT'); s.players[0].discard = [];
+    for (let i = 0; i < 3; i++) draw(s);
+    stop(s);
+    return s;
+  };
+  it('favGate=removed：1枚も排除していないとお気に入りは取得できない', () => {
+    const s = atBuy({ favGate: 'removed' });
+    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: ['KODAWARI'], remove: [] })).toThrow(/排除してから/);
+    const t = atBuy({ favGate: 'removed' });
+    t.players[0].removed = 1;
+    applyOverlay(t, 0, { type: 'resolve', buy: ['KODAWARI'], remove: [] });
+    expect(t.players[0].perms).toContain('KODAWARI');
+  });
+
+  it('favGate=sale：お気に入りは1ラウンド目 +2・2ラウンド目 +1', () => {
+    const s = atBuy({ favGate: 'sale' });
+    const amt = here(s).amount;
+    expect(amt).toBeLessThan(4 + 2); // こだわり（4）は1ラウンド目は6
+    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: ['KODAWARI'], remove: [] })).toThrow(/超えています/);
+    s.round = 3;
+    applyOverlay(s, 0, { type: 'resolve', buy: ['KODAWARI'], remove: [] });
+    expect(s.players[0].perms).toContain('KODAWARI');
+  });
+
+  it('favGate=restock：お気に入りは並んでおらず，普通のタイルが売り切れると1種入荷', () => {
+    const s = atBuy({ favGate: 'restock' });
+    expect(s.market.KODAWARI).toBe(0);
+    expect(s.favQueue!.length).toBeGreaterThan(3);
+    const first = s.favQueue![0].kind;
+    s.market.UP2 = 1;
+    applyOverlay(s, 0, { type: 'resolve', buy: ['UP2'], remove: [] });
+    expect(s.market[first]).toBe(1);
+    expect(s.favQueue!.some(f => f.kind === first)).toBe(false);
   });
 });
 

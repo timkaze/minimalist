@@ -74,7 +74,7 @@ export interface Rules {
   /** 決心チップのもらい方：idle = 1枚も排除できなかった手番の終わりに1枚（目標の達成でも1枚）／goal = 目標の達成でだけもらう（家計簿は別） */
   chipGain: 'idle' | 'goal';
   /** はじめに持つ決心チップ：none = 0枚／one = 全員1枚／seat = 手番順に 0, 1, 2, 2枚（後の手番ほど多い．2枚まで．3枚だと4人戦の4番手が勝ちすぎた）／wide = seat と同じだが4人以上の卓では 0, 1, 2, 3枚 */
-  chipStart: 'none' | 'one' | 'seat' | 'wide';
+  chipStart: 'none' | 'one' | 'seat' | 'wide' | 'narrow';
   /** 目標のごほうび：one = どれも1枚／tiered = 難しさに応じて1〜3枚 */
   goalChips: 'one' | 'tiered';
   /** お気に入りの上限：1人が持てる数（0 = 上限なし） */
@@ -85,8 +85,10 @@ export interface Rules {
   favStock4: 1 | 2;
   /** お気に入りを取得できる最初のラウンド */
   favFrom: 1 | 2;
+  /** お気に入りの出し方：none／removed＝1枚以上排除した人だけ／sale＝発売直後は高い（1R+2・2R+1）／restock＝普通のタイルが売り切れるたびに1種入荷 */
+  favGate: 'none' | 'removed' | 'sale' | 'restock';
 }
-export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 3, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: true, goals: 'need1', chipGain: 'goal', chipStart: 'seat', goalChips: 'tiered', favCap: 0, dropChips: false, favStock4: 1, favFrom: 1 };
+export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 3, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: true, goals: 'need1', chipGain: 'goal', chipStart: 'seat', goalChips: 'tiered', favCap: 0, dropChips: false, favStock4: 1, favFrom: 1, favGate: 'none' };
 
 /** 外から来たルールを整える（不正な値は既定に） */
 export function normRules(r: Partial<Rules> | undefined | null): Rules {
@@ -111,12 +113,13 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
     carry: bool(x.carry, d.carry),
     favOne: bool(x.favOne, d.favOne),
     chipGain: x.chipGain === 'goal' || x.chipGain === 'idle' ? x.chipGain : d.chipGain,
-    chipStart: x.chipStart === 'none' || x.chipStart === 'one' || x.chipStart === 'seat' || x.chipStart === 'wide' ? x.chipStart : d.chipStart,
+    chipStart: x.chipStart === 'none' || x.chipStart === 'one' || x.chipStart === 'seat' || x.chipStart === 'wide' || x.chipStart === 'narrow' ? x.chipStart : d.chipStart,
     goalChips: x.goalChips === 'tiered' || x.goalChips === 'one' ? x.goalChips : d.goalChips,
     favCap: x.favCap === 2 || x.favCap === 0 ? x.favCap : d.favCap,
     dropChips: bool(x.dropChips, d.dropChips),
     favStock4: x.favStock4 === 2 || x.favStock4 === 1 ? x.favStock4 : d.favStock4,
     favFrom: x.favFrom === 2 || x.favFrom === 1 ? x.favFrom : d.favFrom,
+    favGate: x.favGate === 'removed' || x.favGate === 'sale' || x.favGate === 'restock' || x.favGate === 'none' ? x.favGate : d.favGate,
     goals: x.goals === 'bonus' || x.goals === 'need1' || x.goals === 'need2' || x.goals === 'off' ? x.goals : d.goals,
   };
 }
@@ -141,7 +144,13 @@ export const GOAL_KINDS = Object.keys(GOALS) as GoalKind[];
 /** 目標1つを達成したときにもらえる決心チップ */
 export const goalReward = (k: GoalKind, rules: Rules) => (rules.goalChips === 'tiered' ? GOALS[k].chips : 1);
 /** はじめに持つ決心チップ（n 人の卓で seat 番目の手番の人） */
-export const startChips = (seat: number, rules: Rules, n = 2) => (!rules.chips ? 0 : rules.chipStart === 'one' ? 1 : rules.chipStart === 'seat' || rules.chipStart === 'wide' ? Math.min(rules.chipStart === 'wide' && n >= 4 ? 3 : 2, seat) : 0);
+export const startChips = (seat: number, rules: Rules, n = 2) => {
+  if (!rules.chips) return 0;
+  if (rules.chipStart === 'one') return 1;
+  if (rules.chipStart === 'narrow' && n >= 4) return [0, 1, 1, 2][seat] ?? 2;
+  if (rules.chipStart === 'seat' || rules.chipStart === 'wide' || rules.chipStart === 'narrow') return Math.min(rules.chipStart === 'wide' && n >= 4 ? 3 : 2, seat);
+  return 0;
+};
 /** 1試合でめくる目標の数 */
 export const GOAL_PICK = 3;
 /** 最後の1枚を排除するのに必要な達成数 */
@@ -337,6 +346,8 @@ export interface OState {
   rules: Rules;
   /** 福袋の残り（全員で共有） */
   gacha: OKind[];
+  /** 入荷待ちのお気に入り（favGate restock．先頭から並ぶ） */
+  favQueue?: { kind: OKind; n: number }[];
   /** この試合の目標（ルール goals が off でなければ3枚） */
   goals?: GoalKind[];
 }
@@ -360,6 +371,12 @@ export function newOverlayGame(
     board: OBOARDS[rules.board], rules, gacha: GACHA_POOL.flatMap(([k, n]) => Array.from({ length: n }, () => k)),
   };
   for (const k of opts.market ?? MARKET) s.market[k] = UNLIMITED_KINDS.includes(k) ? UNLIMITED : rules.favOne && isPerm(k) ? (setup.length >= 4 ? rules.favStock4 : 1) : Math.max(2, setup.length);
+  if (rules.favGate === 'restock') {
+    const q = (Object.keys(s.market) as OKind[]).filter(isPerm);
+    shuffle(q, s);
+    s.favQueue = q.map(k => ({ kind: k, n: s.market[k]! }));
+    for (const k of q) s.market[k] = 0;
+  }
   for (const p of setup) {
     const bag: Tile[] = [];
     for (const [k, n] of startingBag(rules.hesCount, rules.bigBag)) for (let i = 0; i < n; i++) bag.push({ id: s.nextId++, kind: k });
@@ -383,6 +400,10 @@ export const ownedTiles = (p: OPlayer): Tile[] => [...p.bag, ...p.discard, ...p.
 /** 最後の1枚：持ち物がこの手番に置いた1枚だけ */
 export const isLastCard = (p: OPlayer) => !p.bag.length && !p.discard.length && p.placed.length === 1;
 export const isDone = (p: OPlayer) => ownedTiles(p).length === 0;
+/** 取得の値段（発売直後は高い：1ラウンド目 +2，2ラウンド目 +1） */
+export const priceOf = (k: OKind, s: Pick<OState, 'round' | 'rules'>) => (TILES[k].cost ?? 99) + (isPerm(k) && s.rules.favGate === 'sale' ? Math.max(0, 3 - s.round) : 0);
+/** お気に入りをまだ取得できない（ラウンドの制限・排除の経験） */
+export const favLocked = (k: OKind, s: Pick<OState, 'round' | 'rules'>, p: Pick<OPlayer, 'removed'>) => isPerm(k) && (s.round < s.rules.favFrom || (s.rules.favGate === 'removed' && p.removed < 1));
 export const favCost = (p: OPlayer) => p.perms.reduce((n, k) => n + (TILES[k].cost ?? 0), 0);
 /** まだ引けるか */
 export const canDraw = (p: OPlayer, rules: Rules) => p.bag.length > 0 || (rules.refill && p.discard.length > 0);
@@ -480,10 +501,11 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
   let total = 0;
   const need: Partial<Record<OKind, number>> = {};
   for (const k of a.buy) {
-    const cost = TILES[k]?.cost;
+    const cost = TILES[k]?.cost == null ? null : priceOf(k, s);
     if (cost == null || s.market[k] === undefined) throw new ORuleError('市場にないタイルです');
     if (isPerm(k) && (p.perms.includes(k) || a.buy.filter(x => x === k).length > 1)) throw new ORuleError('同じお気に入りは1枚まで');
     if (isPerm(k) && s.round < s.rules.favFrom) throw new ORuleError(`お気に入りは${s.rules.favFrom}ラウンド目から取得できます`);
+    if (favLocked(k, s, p)) throw new ORuleError('お気に入りは，1枚以上排除してから取得できます');
     if (isPerm(k) && s.rules.favCap && p.perms.length + a.buy.filter(x => isPerm(x)).length > s.rules.favCap) throw new ORuleError(`お気に入りは1人${s.rules.favCap}枚までです`);
     if (!canBuyAt(k, pos.x, s.rules)) throw new ORuleError(TILES[k].calmNeed ? `${TILES[k].name}は理性${TILES[k].calmNeed}以上の列でないと取得できません` : `${TILES[k].name}は衝動${TILES[k].buyNeed}以上の列でないと取得できません`);
     total += cost;
@@ -550,8 +572,10 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
   const short = goalNeed(s.rules) - (p.goals?.length ?? 0) - hit.length;
   if (leftAfter === 0 && short > 0) throw new ORuleError(`目標をあと${short}つ達成するまで，最後の1枚は手放せません`);
 
+  const restocked: OKind[] = [];
   for (const k of a.buy) {
     if (!UNLIMITED_KINDS.includes(k)) s.market[k]!--;
+    if (s.favQueue?.length && !isPerm(k) && s.market[k] === 0) { const f = s.favQueue.shift()!; s.market[f.kind] = f.n; restocked.push(f.kind); }
     if (isPerm(k)) p.perms.push(k);
     else p.discard.push({ id: s.nextId++, kind: k });
     p.bought++;
@@ -593,6 +617,7 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
   // 手放すと決心チップ（ルール dropChips）
   const dropGain = s.rules.dropChips && s.rules.chips ? goneTiles.reduce((n, c) => n + dropChipOf(c.kind, pos.x), 0) : 0;
   if (dropGain && p.chips < MAX_CHIPS) { p.chips = Math.min(MAX_CHIPS, p.chips + dropGain); parts.push(`手放して決心チップ+${dropGain}`); }
+  if (restocked.length) parts.push(`棚が空いて「${restocked.map(k => TILES[k].name).join('」「')}」が入荷`);
   if (eaten) parts.push('ルンバが1枚吸い込んだ');
   for (const f of newFurn) parts.push(`${TILES[f.kind].name}を(${f.pos.x},${f.pos.y})に置いた`);
   s.log.push(parts.join(' / '));

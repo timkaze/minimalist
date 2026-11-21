@@ -8,6 +8,7 @@ import { ALL_PERMS as PERMS, BUYABLE, Dir, FURN_KINDS, OKind, TILES, UNLIMITED_K
 import {
   Env, Furn, MAX_CHIPS, OAction, OPlayer, OState, Placed, Pos, Rules, Tile, X_MAX, X_MIN, canBuyAt, canDraw, canDropAt, canMove, canPlaceFurn, chipNeed,
   dirsOf, discardLimit, GOAL_KINDS, goalReward, effectAt, envOf, exitPos, goalMet, goalNeed, hasGlobal, isDeep, isLastCard, ownedTiles, samePos, yMax, yMin,
+  priceOf, favLocked,
 } from './engine';
 import { BAG_KINDS, BINS, GOAL_BIT, KIDX, MIDX, NFEAT, NK, NM, ValueModel, boardExt, countsOf, featOfPlayer, fillFeat, goalMask, kindWeights, permMaskOf, popcount, stockOf } from './value';
 
@@ -236,13 +237,13 @@ class Turn {
     let out = this.buyAll.get(key);
     if (out) return out;
     out = [];
-    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !(isPerm(k) && this.s.round < this.rules.favFrom) && (TILES[k].cost ?? 99) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
+    const ks = BUYABLE.filter(k => this.stock[MIDX[k]] > 0 && !favLocked(k, this.s, this.p) && priceOf(k, this.s) <= amount && canBuyAt(k, lvl, this.rules) && !(isPerm(k) && this.p.perms.includes(k)));
     const cur: OKind[] = [];
     const rec = (i: number, left: number) => {
       out!.push([...cur]);
       if (cur.length >= 4) return;
       for (let j = i; j < ks.length; j++) {
-        const k = ks[j], c = TILES[k].cost!;
+        const k = ks[j], c = priceOf(k, this.s);
         if (c > left) continue;
         const n = cur.filter(z => z === k).length;
         if (n >= Math.min(isPerm(k) ? 1 : 3, this.stock[MIDX[k]])) continue;
@@ -316,7 +317,7 @@ class Turn {
     }
     const place = this.placeOf(buy);
     const ext = place.length ? this.ext(st.shelves, [...this.furn0, ...place], st.ext.g) : st.ext;
-    return this.finish(bag, d, mask, 0, nRemoved, stk, ext, true, junk, buy.reduce((n, k) => n + (TILES[k].cost ?? 0), 0)) + this.bonusOf(buy);
+    return this.finish(bag, d, mask, 0, nRemoved, stk, ext, true, junk, buy.reduce((n, k) => n + priceOf(k, this.s), 0)) + this.bonusOf(buy);
   }
 
   /** 探索の葉で試す組み合わせ：今の持ち物で点数の高い順に少数だけ（葉ごとに全部は試さない） */

@@ -8,6 +8,7 @@ import {
   DEFAULT_RULES, GOALS, OAction, OBOARDS, OPlayer, OState, Pos, Rules, Tile, X_MAX, X_MIN, applyOverlay, goalNeed, goalReward, canBuyAt, canDraw, canDropAt, canMove,
   chipNeed, dirsOf, discardLimit, envOf, favCost, hereFx, isDeep, isLastCard, newOverlayGame, normRules, ownedTiles, printedFx, removeLoad, samePos,
   stackAt, step, tileFx, topTile, yMax, yMin,
+  priceOf, favLocked,
 } from './engine';
 import { OBOT_LABELS, RANDOM_BOT, SEARCH_BOT, botChoices, resolveBot } from './bot';
 import { botAction } from './bots';
@@ -162,7 +163,7 @@ const RULE_OPTS: { key: keyof Rules; label: string; choices: [string, string][] 
   { key: 'midBuy', label: '中央の行（START の左右）', choices: [['true', '額2（ためらいの最低保証）'], ['false', '効果なし']] },
   { key: 'weights', label: '捨てる重さ', choices: [['heavy', '重い（欲しい2・↑へ行くタイル2・ガラクタ2）'], ['light', '軽い（ガラクタ2，ほかは1）']] },
   { key: 'chipGain', label: '決心チップのもらい方', choices: [['idle', '排除できなかった手番に1枚（目標の達成でも1枚）'], ['goal', '目標の達成でだけ（目標のルールと一緒に）']] },
-  { key: 'chipStart', label: 'はじめの決心チップ', choices: [['none', 'なし'], ['one', '全員1枚'], ['seat', '手番順に0・1・2・2枚（後の手番ほど多い）'], ['wide', '手番順に0・1・2・3枚（2・3人の卓は2枚まで）']] },
+  { key: 'chipStart', label: 'はじめの決心チップ', choices: [['none', 'なし'], ['one', '全員1枚'], ['seat', '手番順に0・1・2・2枚（後の手番ほど多い）'], ['wide', '手番順に0・1・2・3枚（2・3人の卓は2枚まで）'], ['narrow', '手番順に0・1・2・2枚（4人の卓は0・1・1・2枚）']] },
   { key: 'goalChips', label: '目標のごほうび', choices: [['one', 'どれも決心チップ1枚'], ['tiered', '難しさに応じて1〜3枚（目標に書いてある）']] },
   { key: 'chips', label: '決心チップ', choices: [['true', 'あり（排除できなかった手番に1枚．重さ1か条件1段階に使える）'], ['false', 'なし']] },
   { key: 'junk', label: 'ガラクタの矢印', choices: [['right', '→だけ'], ['four', '4方向']] },
@@ -172,6 +173,7 @@ const RULE_OPTS: { key: keyof Rules; label: string; choices: [string, string][] 
   { key: 'favOne', label: 'お気に入りの在庫', choices: [['true', '各1枚（取り合い）'], ['false', '人数ぶん（2枚以上）']] },
   { key: 'favStock4', label: '4人戦のお気に入りの在庫（各1枚のとき）', choices: [['1', '各1枚'], ['2', '各2枚']] },
   { key: 'favFrom', label: 'お気に入りを取得できるのは', choices: [['1', '1ラウンド目から'], ['2', '2ラウンド目から']] },
+  { key: 'favGate', label: 'お気に入りの出会い方', choices: [['none', 'いつでも'], ['removed', '1枚以上手放してから（手放して好きな物が分かる）'], ['sale', '発売直後は高い（1ラウンド目+2・2ラウンド目+1）'], ['restock', '普通のタイルが売り切れるたびに1種入荷']] },
   { key: 'carry', label: '量を運ぶタイル', choices: [['true', 'あり（「運ぶ +n」のタイルは，盤にあるあいだ止まったマスの量 +n）'], ['false', 'なし（v0.4 まで）']] },
   { key: 'bigBag', label: '初期の袋', choices: [['false', 'ふつう（欲しい2・迷い1・ガラクタ1＋ためらい）'], ['true', '多め（欲しい3・迷い2・ガラクタ2＋ためらい）']] },
   { key: 'special', label: '特別なマス', choices: [['true', 'あり（捨欲の中の額マス・福袋・運試し）'], ['false', 'なし']] },
@@ -256,9 +258,9 @@ function rulesHTML() {
     <li>特別なマス：捨欲の領域にも<b class="cb">額</b>のマスが点々とある（量のタイルで塗り替えられる）．<b>福袋</b>は共有の福袋からくじで1枚もらう．<b>運試し</b>は，自分の袋（まだ引いていないタイル）に当たりチップを混ぜ，当たりが出るまでタイルを表にする．表にした枚数がそのまま量になる（そのあとは量のマスと同じ）．表にしたタイルは排除の対象にならず，捨て山へ送る</li>
     <li><b class="cr">運ぶ +n</b> と書いたタイル（冷静・断捨離・思い出の品）は，<b>盤にあるあいだ</b>（置いた手番のあいだ），止まったマスの<b class="cr">量</b>を +n します．何枚でも重なる．たくさん置いてから量のマスで止まるほど，まとめて捨てられます（ルールで外せます）</li>
     <li>タイルの四隅：左上＝コスト，右上＝取得の条件（衝n＝衝動n以上の列），左下＝捨てる重さ，右下＝排除の条件（理n＝理性n以上の列）</li>
-    <li><b>決心チップ</b>（◆）：${R().chipGain === 'goal' ? '目標を達成したときに1枚もらう（3枚まで）．' : '1枚も排除できなかった手番の終わりに1枚もらう（3枚まで）．'}${R().chipStart === 'one' ? 'はじめに全員1枚持つ．' : R().chipStart === 'seat' || R().chipStart === 'wide' ? (R().chipStart === 'wide' ? 'はじめに手番順で0・1・2・3枚持つ（2・3人の卓は2枚まで）．' : 'はじめに手番順で0・1・2・2枚持つ（後の手番ほど多い）．') : ''}量のマスで排除するとき，1枚で「重さ1の肩代わり」か「理性の条件1段階の免除」に使える．足りない分だけ自動で使う</li>
+    <li><b>決心チップ</b>（◆）：${R().chipGain === 'goal' ? '目標を達成したときに1枚もらう（3枚まで）．' : '1枚も排除できなかった手番の終わりに1枚もらう（3枚まで）．'}${R().chipStart === 'one' ? 'はじめに全員1枚持つ．' : R().chipStart === 'seat' || R().chipStart === 'wide' || R().chipStart === 'narrow' ? (R().chipStart === 'wide' ? 'はじめに手番順で0・1・2・3枚持つ（2・3人の卓は2枚まで）．' : R().chipStart === 'narrow' ? 'はじめに手番順で0・1・2・2枚持つ（4人の卓は0・1・1・2枚）．' : 'はじめに手番順で0・1・2・2枚持つ（後の手番ほど多い）．') : ''}量のマスで排除するとき，1枚で「重さ1の肩代わり」か「理性の条件1段階の免除」に使える．足りない分だけ自動で使う</li>
     <li>高いものは<b>衝動の列でないと取得できない</b>，思い入れのあるものは<b>理性の列でないと排除できない</b>（タイルの説明に書いてあります）</li>
-    <li>★お気に入りは取得したら自分の前に置き，効果がずっと続きます（袋に入らない．${R().favOne ? '各1枚．先に取った人のもの' + (R().favStock4 === 2 ? '（4人戦は各2枚）' : '') : '人数ぶん'}${R().favFrom === 2 ? '．2ラウンド目から取得できる' : ''}${R().favCap ? `．<b>1人${R().favCap}枚まで</b>` : ''}）</li>
+    <li>★お気に入りは取得したら自分の前に置き，効果がずっと続きます（袋に入らない．${R().favOne ? '各1枚．先に取った人のもの' + (R().favStock4 === 2 ? '（4人戦は各2枚）' : '') : '人数ぶん'}${R().favFrom === 2 ? '．2ラウンド目から取得できる' : ''}${R().favGate === 'removed' ? '．1枚以上排除した人だけが取得できる' : R().favGate === 'sale' ? '．発売直後は高い（1ラウンド目はコスト+2，2ラウンド目は+1）' : R().favGate === 'restock' ? '．はじめは並んでいない．普通のタイルが1種売り切れるたびに1種入荷する' : ''}${R().favCap ? `．<b>1人${R().favCap}枚まで</b>` : ''}）</li>
     ${R().dropChips && R().chips ? '<li><b>手放すと◆</b>：緑の印のタイルは，排除したときに決心チップを1枚もらえる（「理で手放すと◆」は理性の列で排除したときだけ）</li>' : ''}
     ${R().lastCard ? '' : '<li><b>最後の1枚も，量のマスで排除</b>しないと達成になりません（重さ・条件もふつうどおり．決心チップは使えます）．↑や→のタイルが最後に残ると捨てに行けないので，終わり方を考えて残すタイルを選びます</li>'}
     ${R().goals === 'off' ? '' : `<li><b>目標</b>：はじめに目標を3枚めくります（全員共通）．止まり方が条件を満たしたら達成で，決心チップを${R().goalChips === 'tiered' ? '目標ごとに書かれた枚数（難しさに応じて1〜3枚）' : '1枚'}もらいます（1人1回ずつ）${goalNeed(R()) ? `．<b>${goalNeed(R())}つ達成するまで，最後の1枚は手放せません</b>` : ''}</li>`}
@@ -452,9 +454,9 @@ function marketHTML(buying: boolean, x = 0, left = Infinity): string {
     const chosen = sel.buy.filter(y => y === kind).length;
     const stock = (n ?? 0) - chosen;
     // 取得できない：列の条件に合わない／お気に入りを持っている／残りの額で足りない
-    const ok = canBuyAt(kind, x, st.rules) && !(TILES[kind].perm && (cur().perms.includes(kind) || chosen > 0)) && (TILES[kind].cost ?? 0) <= left;
+    const ok = canBuyAt(kind, x, st.rules) && !(TILES[kind].perm && (cur().perms.includes(kind) || chosen > 0)) && !favLocked(kind, st, cur()) && priceOf(kind, st) <= left;
     const ctl = buying ? `<span class="pm"><button data-sub="${kind}" ${chosen ? '' : 'disabled'}>−</button><b>${chosen}</b><button data-add="${kind}" ${stock <= 0 || !ok ? 'disabled' : ''}>＋</button></span>` : '';
-    return `<div class="mk ${chosen ? 'on' : ''} ${(n ?? 0) <= 0 ? 'out' : ''} ${buying && !ok && !chosen ? 'no' : ''}">${infoHTML(kind, `<div class="stock">${n! >= 99 ? '∞' : `残り${n}`}${ctl}</div>`)}</div>`;
+    return `<div class="mk ${chosen ? 'on' : ''} ${(n ?? 0) <= 0 ? 'out' : ''} ${buying && !ok && !chosen ? 'no' : ''}">${infoHTML(kind, `<div class="stock">${n! >= 99 ? '∞' : st.favQueue?.some(f => f.kind === kind) ? '入荷待ち' : `残り${n}`}${priceOf(kind, st) !== (TILES[kind].cost ?? 99) ? `　今は${priceOf(kind, st)}` : ''}${ctl}</div>`)}</div>`;
   }).join('');
 }
 
@@ -560,7 +562,7 @@ function controlsHTML(): string {
       const rb = p.perms.includes('ROOMBA') && p.placed.length
         ? `<p>★ルンバ：置いたタイルから1枚排除できる（条件・重さなし）</p><div class="chips pickable">${p.placed.filter(c => !sel.remove.has(c.id) && !lockedOnBoard(c.kind, ownedTiles(p).length)).map(c => tileHTML(c.kind, { attr: `data-rb="${c.id}"`, cls: sel.roomba === c.id ? 'on' : '' })).join('')}</div>` : '';
       if (here.kind === 'buy') {
-        const total = sel.buy.reduce((n, k) => n + (TILES[k].cost ?? 0), 0);
+        const total = sel.buy.reduce((n, k) => n + priceOf(k, st), 0);
         return `<p><b class="cb">額 ${here.amount}</b>：取得するタイルを選んでください　<span class="meter ${total > here.amount ? 'over' : ''}">使用 ${total} / ${here.amount}</span></p>
           <div class="market buying">${marketHTML(true, p.pos.x, here.amount - total)}</div>${rb}
           <button id="resolve" class="primary big" ${total > here.amount ? 'disabled' : ''}>${sel.buy.length ? '取得して手番を終える' : '何も取らずに手番を終える'}</button>`;
