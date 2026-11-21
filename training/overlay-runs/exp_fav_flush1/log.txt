@@ -1,0 +1,11 @@
+== fav_flush1: OV_TILES= RULES={"favGate":"display","favFlush":1} SET=all
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp2/training/overlay-runs/fit_exp_fav_flush1
+[1] データ 130535行（作成 563秒，終わらなかった人 7.6%）学習 2秒  検証 CE 2.012  手番数の誤差 3.92（平均で当てた場合 8.71）
+[2] データ 286604行（作成 309秒，終わらなかった人 27.8%）学習 2秒  検証 CE 1.914  手番数の誤差 6.36（平均で当てた場合 12.69）
+[3] データ 419025行（作成 309秒，終わらなかった人 8.2%）学習 4秒  検証 CE 1.978  手番数の誤差 5.85（平均で当てた場合 11.66）
+[4] データ 546381行（作成 288秒，終わらなかった人 6.2%）学習 5秒  検証 CE 1.999  手番数の誤差 5.41（平均で当てた場合 10.82）
+保存 /home/tomida/git/mo-exp2/training/overlay-runs/exp_fav_flush1/value_last.json（計 1482秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp2/training/overlay-runs/fit_exp_fav_flush1
+[refit] データ 546381行  検証 CE 1.994  手番数の誤差 5.28（平均で当てた場合 10.82）
+保存 /home/tomida/git/mo-exp2/training/overlay-runs/exp_fav_flush1/value.json
+== done fav_flush1

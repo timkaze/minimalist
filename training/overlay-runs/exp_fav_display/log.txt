@@ -1,0 +1,11 @@
+== fav_display: OV_TILES= RULES={"favGate":"display"} SET=all
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp/training/overlay-runs/fit_exp_fav_display
+[1] データ 135302行（作成 326秒，終わらなかった人 9.5%）学習 2秒  検証 CE 1.984  手番数の誤差 4.17（平均で当てた場合 9.56）
+[2] データ 291718行（作成 314秒，終わらなかった人 29.9%）学習 3秒  検証 CE 1.897  手番数の誤差 6.91（平均で当てた場合 13.16）
+[3] データ 433195行（作成 371秒，終わらなかった人 10.2%）学習 4秒  検証 CE 1.952  手番数の誤差 6.59（平均で当てた場合 12.28）
+[4] データ 569566行（作成 350秒，終わらなかった人 7.5%）学習 5秒  検証 CE 1.999  手番数の誤差 6.07（平均で当てた場合 11.34）
+保存 /home/tomida/git/mo-exp/training/overlay-runs/exp_fav_display/value_last.json（計 1376秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp/training/overlay-runs/fit_exp_fav_display
+[refit] データ 569566行  検証 CE 1.995  手番数の誤差 5.96（平均で当てた場合 11.34）
+保存 /home/tomida/git/mo-exp/training/overlay-runs/exp_fav_display/value.json
+== done fav_display
