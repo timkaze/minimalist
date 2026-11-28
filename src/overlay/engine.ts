@@ -4,7 +4,7 @@
 //   止まったマスの「一番上に見えている効果」（タイルがあればタイル，なければ盤の印刷）で取得か排除をする
 //   コマは無い．「今いるマス」は最後に置いたタイルの矢印の先（画面ではそのマスを光らせる）
 
-import { DELTA, DIRS, Dir, FURN_KINDS, Fx, GACHA_FX, GACHA_POOL, HES_FX, MARKET, NO_FX, OKind, LUCKY_FX, TILES, UNLIMITED_KINDS, isPerm, startingBag, tileDirs, weightOf, condFree, topAt, lockedOnBoard, dropChipOf } from './tiles';
+import { DELTA, DIRS, Dir, FURN_KINDS, Fx, GACHA_FX, GACHA_POOL, HES_FX, MARKET, NO_FX, OKind, LUCKY_FX, TILES, isUnlimited, isPerm, startingBag, tileDirs, weightOf, condFree, topAt, lockedOnBoard, dropChipOf } from './tiles';
 import { nextRandom } from '../engine/rng';
 import { shuffle } from '../engine/rng';
 
@@ -76,7 +76,7 @@ export interface Rules {
   /** 決心チップのもらい方：idle = 1枚も排除できなかった手番の終わりに1枚（目標の達成でも1枚）／goal = 目標の達成でだけもらう（家計簿は別） */
   chipGain: 'idle' | 'goal';
   /** はじめに持つ決心チップ：none = 0枚／one = 全員1枚／seat = 手番順に 0, 1, 2, 2枚（後の手番ほど多い．2枚まで．3枚だと4人戦の4番手が勝ちすぎた）／wide = seat と同じだが4人以上の卓では 0, 1, 2, 3枚 */
-  chipStart: 'none' | 'one' | 'seat' | 'wide' | 'narrow';
+  chipStart: 'none' | 'one' | 'seat' | 'wide' | 'narrow' | 'late';
   /** 目標のごほうび：one = どれも1枚／tiered = 難しさに応じて1〜3枚 */
   goalChips: 'one' | 'tiered';
   /** お気に入りの上限：1人が持てる数（0 = 上限なし） */
@@ -91,8 +91,26 @@ export interface Rules {
   favGate: 'none' | 'removed' | 'sale' | 'restock' | 'display';
   /** 並びを流す（favGate display のとき）：額のマスで，額 favFlush か決心チップ1枚で，並んだお気に入りを全部山の底へ流して次を並べる．0 なら流せない */
   favFlush: 0 | 1 | 2;
+  /**
+   * 決心チップの使い道（どれも1枚）：
+   *   weight = 量のマスで「重さ1の肩代わり」か「理性の条件1段階の免除」．お気に入りを流す支払いにも使える（v0.7 まで）
+   *   hes = 「理性の条件1段階の免除」か「ためらいを無視して続ける」（v0.8．重さの肩代わりと，流す支払いは無い）
+   */
+  chipUse: 'weight' | 'hes';
+  /** 1枚目のためらい：その手番に置いたタイルがためらい1枚だけで終わったら，決心チップを1枚もらう */
+  hesChip: boolean;
+  /** 使い切り：ご褒美・軽やか・大掃除は置いた手番の終わりに市場へ戻る．false なら普通のタイル（v0.8．実物では重ねたタイルから抜き忘れやすい） */
+  oneShot: boolean;
+  /** 片付けたいの在庫：players = 人数ぶん（v0.8）／unlimited = 売り切れなし */
+  downStock: 'players' | 'unlimited';
+  /** 大掃除の日：minus1 = 全部のタイルの重さ −1（1→0，2→1．排除の条件はそのまま．v0.8）／all = 量のマスで置いたタイルを何枚でも（量・重さを無視） */
+  bigday: 'minus1' | 'all';
+  /** 目標に「理性の果て」を入れる（v0.8 で外した） */
+  goalCalm: boolean;
 }
-export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 3, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: true, goals: 'need1', chipGain: 'goal', chipStart: 'one', goalChips: 'tiered', favCap: 0, dropChips: false, favStock4: 1, favFrom: 1, favGate: 'display', favFlush: 1 };
+export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 3, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: true, goals: 'bonus', chipGain: 'goal', chipStart: 'late', goalChips: 'tiered', favCap: 0, dropChips: false, favStock4: 1, favFrom: 1, favGate: 'display', favFlush: 1, chipUse: 'hes', hesChip: true, oneShot: false, downStock: 'players', bigday: 'minus1', goalCalm: false };
+/** v0.7 の既定（比べるとき用） */
+export const V07_RULES: Partial<Rules> = { goals: 'need1', chipStart: 'one', chipUse: 'weight', hesChip: false, oneShot: true, downStock: 'unlimited', bigday: 'all', goalCalm: true };
 
 /** 外から来たルールを整える（不正な値は既定に） */
 export function normRules(r: Partial<Rules> | undefined | null): Rules {
@@ -117,7 +135,7 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
     carry: bool(x.carry, d.carry),
     favOne: bool(x.favOne, d.favOne),
     chipGain: x.chipGain === 'goal' || x.chipGain === 'idle' ? x.chipGain : d.chipGain,
-    chipStart: x.chipStart === 'none' || x.chipStart === 'one' || x.chipStart === 'seat' || x.chipStart === 'wide' || x.chipStart === 'narrow' ? x.chipStart : d.chipStart,
+    chipStart: x.chipStart === 'none' || x.chipStart === 'one' || x.chipStart === 'seat' || x.chipStart === 'wide' || x.chipStart === 'narrow' || x.chipStart === 'late' ? x.chipStart : d.chipStart,
     goalChips: x.goalChips === 'tiered' || x.goalChips === 'one' ? x.goalChips : d.goalChips,
     favCap: x.favCap === 2 || x.favCap === 0 ? x.favCap : d.favCap,
     dropChips: bool(x.dropChips, d.dropChips),
@@ -125,6 +143,12 @@ export function normRules(r: Partial<Rules> | undefined | null): Rules {
     favFrom: x.favFrom === 2 || x.favFrom === 1 ? x.favFrom : d.favFrom,
     favFlush: x.favFlush === 0 || x.favFlush === 1 || x.favFlush === 2 ? x.favFlush : d.favFlush,
     favGate: x.favGate === 'removed' || x.favGate === 'sale' || x.favGate === 'restock' || x.favGate === 'display' || x.favGate === 'none' ? x.favGate : d.favGate,
+    chipUse: x.chipUse === 'weight' || x.chipUse === 'hes' ? x.chipUse : d.chipUse,
+    hesChip: bool(x.hesChip, d.hesChip),
+    oneShot: bool(x.oneShot, d.oneShot),
+    downStock: x.downStock === 'players' || x.downStock === 'unlimited' ? x.downStock : d.downStock,
+    bigday: x.bigday === 'minus1' || x.bigday === 'all' ? x.bigday : d.bigday,
+    goalCalm: bool(x.goalCalm, d.goalCalm),
     goals: x.goals === 'bonus' || x.goals === 'need1' || x.goals === 'need2' || x.goals === 'off' ? x.goals : d.goals,
   };
 }
@@ -152,6 +176,7 @@ export const goalReward = (k: GoalKind, rules: Rules) => (rules.goalChips === 't
 export const startChips = (seat: number, rules: Rules, n = 2) => {
   if (!rules.chips) return 0;
   if (rules.chipStart === 'one') return 1;
+  if (rules.chipStart === 'late') return seat >= Math.ceil(n / 2) ? 1 : 0; // 後半の席だけ1枚（4人なら 0・0・1・1，3人 0・0・1，2人 0・1）
   if (rules.chipStart === 'narrow' && n >= 4) return [0, 1, 1, 2][seat] ?? 2;
   if (rules.chipStart === 'seat' || rules.chipStart === 'wide' || rules.chipStart === 'narrow') return Math.min(rules.chipStart === 'wide' && n >= 4 ? 3 : 2, seat);
   return 0;
@@ -311,6 +336,8 @@ export interface OPlayer {
   pos: Pos;
   /** この手番に出たためらいの枚数 */
   hes: number;
+  /** ためらいで止まるところ：決心チップ1枚を払って引き続けるか，止まるかを選ぶ（ルール chipUse hes） */
+  hesHold?: boolean;
   perms: OKind[];
   /** 片付けた跡（ルールで壁にしたときだけ使う） */
   traces: Pos[];
@@ -380,7 +407,7 @@ export function newOverlayGame(
     players: [], market: {}, current: 0, round: 1, phase: 'play', turn: 'move', winners: [], log: [], rng: seed, nextId: 1,
     board: OBOARDS[rules.board], rules, gacha: GACHA_POOL.flatMap(([k, n]) => Array.from({ length: n }, () => k)),
   };
-  for (const k of opts.market ?? MARKET) s.market[k] = UNLIMITED_KINDS.includes(k) ? UNLIMITED : rules.favOne && isPerm(k) ? (setup.length >= 4 ? rules.favStock4 : 1) : Math.max(2, setup.length);
+  for (const k of opts.market ?? MARKET) s.market[k] = isUnlimited(k, rules) ? UNLIMITED : rules.favOne && isPerm(k) ? (setup.length >= 4 ? rules.favStock4 : 1) : Math.max(2, setup.length);
   if (rules.favGate === 'restock' || rules.favGate === 'display') {
     const q = (Object.keys(s.market) as OKind[]).filter(isPerm);
     shuffle(q, s);
@@ -398,7 +425,7 @@ export function newOverlayGame(
     s.players.push({ name: p.name, isBot: !!p.isBot, botType: p.botType, bag, discard: [], placed: [], pos: { x: 0, y: 0 }, hes: 0, perms: [], traces: [], removed: 0, bought: 0, finished: false, chips: startChips(s.players.length, rules, setup.length) });
   }
   if (rules.goals !== 'off') {
-    const gs = [...GOAL_KINDS];
+    const gs = GOAL_KINDS.filter(k => rules.goalCalm || k !== 'CALM3');
     shuffle(gs, s);
     s.goals = gs.slice(0, GOAL_PICK);
   }
@@ -440,23 +467,35 @@ function stopHere(s: OState, p: OPlayer): void {
   s.log.push(`${p.name}：運試し → 袋から${k}枚表にして当たり（量${k}）`);
 }
 
+/** ためらいで止まる．決心チップがあってまだ引けるなら（ルール chipUse hes），払って続けるか止まるかを選べる */
+function hesStop(s: OState, p: OPlayer): void {
+  if (s.rules.chips && s.rules.chipUse === 'hes' && (p.chips ?? 0) >= 1 && canDraw(p, s.rules)) { p.hesHold = true; s.turn = 'move'; return; }
+  stopHere(s, p);
+}
+
 export const canBuyAt = (k: OKind, x: number, rules: Rules) => !rules.needs || ((TILES[k].buyNeed ?? 0) <= Math.max(0, x) && (TILES[k].calmNeed ?? 0) <= Math.max(0, -x));
 /** noCond：手放す覚悟（排除の条件を無視） */
 export const canDropAt = (k: OKind, x: number, rules: Rules, noCond = false) => !TILES[k].stay && (noCond || !rules.needs || (TILES[k].dropNeed ?? 0) <= Math.max(0, -x));
 
 /** 排除の重さの合計（道連れ袋1枚につき，ほかの1枚の重さを0にできる．重いものから） */
-export function removeLoad(tiles: Tile[], rules: Rules): number {
+export function removeLoad(tiles: Tile[], rules: Rules, minus = 0): number {
   const drags = tiles.filter(c => TILES[c.kind].drag).length;
-  const others = tiles.filter(c => !TILES[c.kind].drag).map(c => weightOf(c.kind, rules)).sort((a, b) => b - a);
-  return drags + others.slice(drags).reduce((n, w) => n + w, 0);
+  const others = tiles.filter(c => !TILES[c.kind].drag).map(c => Math.max(0, weightOf(c.kind, rules) - minus)).sort((a, b) => b - a);
+  return drags * Math.max(0, 1 - minus) + others.slice(drags).reduce((n, w) => n + w, 0);
 }
+/** 大掃除の日を持つときに重さから引く数（ルール bigday minus1 のとき 1） */
+export const bigdayMinus = (rules: Rules, bigday: boolean) => (bigday && rules.bigday === 'minus1' ? 1 : 0);
+/** chipNeed の戻り値：決心チップでは足りない（重さが量を超えていて，肩代わりできないルール） */
+export const NO_WAY = 99;
 /** 決心チップの上限 */
 export const MAX_CHIPS = 3;
 /**
- * その排除に必要な決心チップの枚数：量を超えた重さ（置いたタイルだけ．大掃除の日なら0）＋足りない理性の段数（タイルごと）
+ * その排除に必要な決心チップの枚数：量を超えた重さ（置いたタイルだけ．大掃除の日なら0か，重さ −1 で数える）＋足りない理性の段数（タイルごと）
+ * ルール chipUse hes では重さは肩代わりできない（超えていたら NO_WAY）
  */
 export function chipNeed(fromFlow: Tile[], fromDiscard: Tile[], x: number, amount: number, rules: Rules, bigday: boolean, noCond = false): number {
-  const over = bigday ? 0 : Math.max(0, removeLoad(fromFlow, rules) - amount);
+  const over = bigday && rules.bigday === 'all' ? 0 : Math.max(0, removeLoad(fromFlow, rules, bigdayMinus(rules, bigday)) - amount);
+  if (over && rules.chipUse === 'hes') return NO_WAY; // 重さの肩代わりは無い
   const reason = Math.max(0, -x);
   const cond = rules.needs && !noCond ? [...fromFlow, ...fromDiscard].reduce((n, c) => n + Math.max(0, (TILES[c.kind].dropNeed ?? 0) - reason), 0) : 0;
   return over + cond;
@@ -474,12 +513,17 @@ export function applyOverlay(s: OState, seat: number, a: OAction): void {
     case 'draw': {
       if (s.turn !== 'move') throw new ORuleError('今は引けません');
       if (!canDraw(p, s.rules)) throw new ORuleError('袋が空です．止めてください');
+      if (p.hesHold) { // ためらいを無視して続ける
+        p.hesHold = false;
+        p.chips--;
+        s.log.push(`${p.name}：決心チップ1枚でためらいを無視した`);
+      }
       if (!p.bag.length) refill(s, p);
       const tile = p.bag.pop()!;
       putTile(p, tile);
       const dirs = dirsOf(tile.kind, env);
       if (dirs.length > 1) { s.turn = 'branch'; return; }
-      if (leaveTile(env, p, tile.kind, dirs[0] ?? null)) stopHere(s, p);
+      if (leaveTile(env, p, tile.kind, dirs[0] ?? null)) hesStop(s, p);
       return;
     }
     case 'branch': {
@@ -487,12 +531,13 @@ export function applyOverlay(s: OState, seat: number, a: OAction): void {
       const tile = p.placed[p.placed.length - 1];
       if (!dirsOf(tile.kind, env).includes(a.dir)) throw new ORuleError('その向きには出られません');
       s.turn = 'move';
-      if (leaveTile(env, p, tile.kind, a.dir)) stopHere(s, p);
+      if (leaveTile(env, p, tile.kind, a.dir)) hesStop(s, p);
       return;
     }
     case 'stop': {
       if (s.turn !== 'move') throw new ORuleError('今は止められません');
       if (!p.placed.length && canDraw(p, s.rules)) throw new ORuleError('少なくとも1枚引いてください');
+      p.hesHold = false;
       stopHere(s, p);
       return;
     }
@@ -517,6 +562,7 @@ export function flushProblem(s: OState, p: OPlayer, pay: 'buy' | 'chip'): string
   const fx = hereFx(s, p);
   if (fx.kind !== 'buy') return '額のマスでしか流せません';
   if (!s.favQueue?.length) return '山が空です';
+  if (pay === 'chip' && s.rules.chipUse === 'hes') return 'このルールでは決心チップで流せません';
   if (pay === 'chip') return s.rules.chips && (p.chips ?? 0) >= 1 ? null : '決心チップがありません';
   return (p.flushSpent ?? 0) + s.rules.favFlush <= fx.amount ? null : '額が足りません';
 }
@@ -563,7 +609,7 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
   if (fromDiscard.some(c => p.rollIds?.includes(c.id))) throw new ORuleError('運試しで表にしたタイルは排除できません');
   const lastOne = s.rules.lastCard && isLastCard(p) && fromFlow.length === 1 && !fromDiscard.length;
   if (!lastOne && [...fromFlow, ...fromDiscard].some(c => TILES[c.kind].stay)) throw new ORuleError('盤に残るタイルは排除できません');
-  if (ownedTiles(p).length > 1 && fromFlow.some(c => TILES[c.kind].oneShot)) throw new ORuleError('使い切りのタイルは排除できません（手番の終わりに市場へ戻ります）');
+  if (s.rules.oneShot && ownedTiles(p).length > 1 && fromFlow.some(c => TILES[c.kind].oneShot)) throw new ORuleError('使い切りのタイルは排除できません（手番の終わりに市場へ戻ります）');
   const deep = isDeep(pos.y, s.board);
   if (fromDiscard.length > (power.kind === 'remove' ? discardLimit(p, power.amount, deep) : 0)) throw new ORuleError('捨て山から排除できる枚数を超えています');
   let spend = 0;
@@ -576,12 +622,12 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
     if (spend > have) {
       const hard = [...fromFlow, ...fromDiscard].find(c => !canDropAt(c.kind, pos.x, s.rules, noCond));
       if (hard && !have) throw new ORuleError(`${TILES[hard.kind].name}は理性${TILES[hard.kind].dropNeed}以上の列でないと排除できません`);
-      throw new ORuleError(have ? `決心チップが足りません（必要 ${spend}・所持 ${have}）` : `量${power.amount}を超えています`);
+      throw new ORuleError(spend >= NO_WAY ? `重さの合計が量${power.amount}を超えています` : have ? `決心チップが足りません（必要 ${spend}・所持 ${have}）` : `量${power.amount}を超えています`);
     }
   }
   if (a.roomba !== undefined && a.roomba !== null) {
     if (!hasGlobal(p.perms, 'ROOMBA', s.rules)) throw new ORuleError('ルンバを持っていません');
-    if (!p.placed.some(c => c.id === a.roomba && !lockedOnBoard(c.kind, ownedTiles(p).length)) || ids.includes(a.roomba)) throw new ORuleError('ルンバで排除できるのは置いたタイルの1枚です');
+    if (!p.placed.some(c => c.id === a.roomba && !lockedOnBoard(c.kind, ownedTiles(p).length, s.rules.oneShot)) || ids.includes(a.roomba)) throw new ORuleError('ルンバで排除できるのは置いたタイルの1枚です');
   }
   // 盤に置くお気に入りの置き場所を決める（先に確かめる）
   const furn = (p.furn ??= []), fixed = (p.fixed ??= []);
@@ -616,7 +662,7 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
 
   const restocked: OKind[] = [];
   for (const k of a.buy) {
-    if (!UNLIMITED_KINDS.includes(k)) s.market[k]!--;
+    if (!isUnlimited(k, s.rules)) s.market[k]!--;
     if (s.favQueue?.length && (s.rules.favGate === 'display' ? isPerm(k) : !isPerm(k) && s.market[k] === 0)) { const f = s.favQueue.shift()!; s.market[f.kind] = f.n; restocked.push(f.kind); }
     if (isPerm(k)) p.perms.push(k);
     else p.discard.push({ id: s.nextId++, kind: k });
@@ -626,6 +672,8 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
   (p.gone ??= []).push(...[...p.placed, ...p.discard].filter(c => gone.has(c.id)).map(c => ({ id: c.id, kind: c.kind })));
   // ご褒美：その上で止まったら決心チップ（排除で消える前に見る）
   const top = topAt(p.placed, pos), treat = s.rules.chips && top ? TILES[top.kind].stopChip ?? 0 : 0;
+  // 1枚目のためらい：置いたタイルがためらい1枚だけで手番が終わる
+  const hesOnly = s.rules.chips && s.rules.hesChip && p.placed.length === 1 && p.placed[0].kind === 'HES';
   p.placed = p.placed.filter(c => !gone.has(c.id));
   p.discard = p.discard.filter(c => !gone.has(c.id));
   p.removed += gone.size;
@@ -656,6 +704,7 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
     parts.push(`目標達成「${hit.map(k => GOALS[k].name).join('」「')}」${s.rules.chips ? '（決心チップ+' + gain + '）' : ''}`);
   }
   if (treat && p.chips < MAX_CHIPS) { p.chips = Math.min(MAX_CHIPS, p.chips + treat); parts.push(`ご褒美（決心チップ+${treat}）`); }
+  if (hesOnly && p.chips < MAX_CHIPS) { p.chips++; parts.push('1枚目のためらい（決心チップ+1）'); }
   // 手放すと決心チップ（ルール dropChips）
   const dropGain = s.rules.dropChips && s.rules.chips ? goneTiles.reduce((n, c) => n + dropChipOf(c.kind, pos.x), 0) : 0;
   if (dropGain && p.chips < MAX_CHIPS) { p.chips = Math.min(MAX_CHIPS, p.chips + dropGain); parts.push(`手放して決心チップ+${dropGain}`); }
@@ -684,8 +733,8 @@ function endTurn(s: OState, p: OPlayer): void {
   });
   // 使い切り：市場へ戻る（最後の1枚なら戻らない）
   p.placed = p.placed.filter(c => {
-    if (!TILES[c.kind].oneShot || ownedTiles(p).length <= 1) return true;
-    if (s.market[c.kind] !== undefined && !UNLIMITED_KINDS.includes(c.kind)) s.market[c.kind]!++;
+    if (!s.rules.oneShot || !TILES[c.kind].oneShot || ownedTiles(p).length <= 1) return true;
+    if (s.market[c.kind] !== undefined && !isUnlimited(c.kind, s.rules)) s.market[c.kind]!++;
     (p.used ??= []).push(c.kind);
     s.log.push(`${p.name}：${TILES[c.kind].name}を使い切った（市場へ）`);
     return false;
@@ -695,6 +744,7 @@ function endTurn(s: OState, p: OPlayer): void {
   p.placed = [];
   p.pos = { x: 0, y: 0 };
   p.hes = 0;
+  p.hesHold = false;
   p.flushSpent = 0;
   p.flushes = 0;
   p.roll = null;

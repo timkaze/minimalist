@@ -94,6 +94,7 @@ async function main() {
   say(`- 止まったマス：取得 ${stop('buy')}・排除 ${stop('remove')}・なし ${stop('none')}・福袋 ${stop('gacha')}・運試し ${stop('lucky')}`);
   const pl = pool.flatMap(g => g.p);
   say(`- 決心チップ：もらった ${f2(mean(pl.map(p => p.chipsGot)))}枚/人・使った ${f2(mean(pl.map(p => p.chipsUsed)))}枚/人`);
+  if (pl.some(p => p.hesSkips || p.hesFirst)) say(`- ためらい：決心チップで無視した ${f2(mean(pl.map(p => p.hesSkips ?? 0)))}回/人・1枚目のためらいで手番が終わった ${f2(mean(pl.map(p => p.hesFirst ?? 0)))}回/人`);
   { // 小さな目当て：目標を達成したラウンド・お気に入りを初めて取ったラウンド（勝者／敗者）
     const gr = pl.flatMap(p => p.goalRounds ?? []);
     if (gr.length) {

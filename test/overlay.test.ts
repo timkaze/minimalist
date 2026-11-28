@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { OKind, TILES } from '../src/overlay/tiles';
-import { OState, Rules, applyOverlay, hereFx, isDone, newOverlayGame, ownedTiles, printedFx, OBOARDS, DEFAULT_RULES } from '../src/overlay/engine';
+import { OState, Rules, applyOverlay, hereFx, isDone, newOverlayGame, ownedTiles, printedFx, OBOARDS, DEFAULT_RULES, V07_RULES } from '../src/overlay/engine';
 import { OPRESETS, playOverlayTurn, resolveBot } from '../src/overlay/bot';
 
 /** 個々の仕組みを確かめるための土台（v0.5.1 までの既定．今の既定はためらい3枚・目標1つ必須・チップは目標でだけ…） */
-const BASE: Partial<Rules> = { hesCount: 2, goals: 'off', chipGain: 'idle', chipStart: 'none', goalChips: 'one' };
+const BASE: Partial<Rules> = { ...V07_RULES, hesCount: 2, goals: 'off', chipGain: 'idle', chipStart: 'none', goalChips: 'one' };
 const game = (rules: Partial<Rules> = {}) => newOverlayGame([{ name: 'A' }, { name: 'B' }], 1, { rules: { ...BASE, ...rules } });
 /** 現在の手番の人の袋を，引く順に指定する */
 function stack(s: OState, ...kinds: OKind[]) {
@@ -224,7 +224,7 @@ describe('オーバーレイ版', () => {
     expect(q.rollKinds!.length).toBe(q.roll);
     expect(q.bag.length).toBe(2 - q.roll!); // 表にしたタイルは捨て山へ
     expect(q.discard.length).toBe(q.roll);
-    q.roll = 1;
+    q.roll = 2; // 片付けたいは重さ2
     expect(here(t)).toEqual({ kind: 'remove', amount: q.roll });
     applyOverlay(t, 0, { type: 'resolve', buy: [], remove: [q.placed.find(c => c.kind === 'DOWN')!.id] });
     expect(q.removed).toBe(1);

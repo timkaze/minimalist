@@ -80,7 +80,8 @@ export const TILES: Record<OKind, TileDef> = {
   DOUBT:  t('DOUBT', '迷い', ['L'], buy(1), null),
   JUNK:   t('JUNK', 'ガラクタ', ['U', 'D', 'L', 'R'], NO_FX, null, { weight: 2, dropNeed: 1, note: '矢印はルールで変わる（→だけ／4方向）' }),
   HES:    t('HES', 'ためらい', ['R', 'L'], NO_FX, null, { heavy: 2, dropNeed: 1, note: 'ルールで変わる：出たらそこで終わり（効果なし）／2枚目が出たら終わり（額3）' }),
-  DOWN:   t('DOWN', '片付けたい', ['D'], NO_FX, 1),
+  // v0.8：重さ2（先に取ってもあまり得にならないように．在庫も人数ぶん）
+  DOWN:   t('DOWN', '片付けたい', ['D'], NO_FX, 1, { heavy: 2 }),
   BR:     t('BR', '分かれ道', ['D', 'R'], buy(2), 3),
   BREATH: t('BREATH', '深呼吸', ['D', 'L'], buy(2), 3),
   SWING:  t('SWING', '行ったり来たり', ['U', 'D'], buy(2), 3, { heavy: 2 }),
@@ -91,20 +92,21 @@ export const TILES: Record<OKind, TileDef> = {
   DOWN2:  t('DOWN2', '断捨離', ['D'], rem(2), 3, { boost: 1 }),
   // v0.6：勝者がほとんど使わなかった4種を作り直した（軽やか・気まま・ご褒美・大掃除）．チップが目標でしか増えないので，ガラクタ・ためらいを捨てる別の道として
   //   軽やか：量＝排除した枚数÷3（コスト4）→ 盤にあるあいだ排除の条件を無視
-  LIGHT:  t('LIGHT', '軽やか', ['D'], rem(1), 3, { freeDrop: true, oneShot: true, note: '盤にあるあいだ（置いた手番のあいだ），排除の条件（理性n）を無視できる．使い切り' }),
+  LIGHT:  t('LIGHT', '軽やか', ['D'], rem(1), 3, { freeDrop: true, oneShot: true, note: '盤にあるあいだ（置いた手番のあいだ），排除の条件（理性n）を無視できる' }),
   DRAG:   t('DRAG', '道連れ袋', ['D'], buy(2), 3, { drag: true, buyNeed: 1, note: '排除したとき，置いたタイルからもう1枚を重さ0で排除' }),
   MEMO:   t('MEMO', '思い出の品', ['U'], rem(3), 3, { heavy: 2, dropNeed: 2, boost: 2 }),
   // 気まま：コスト5・重さ2 → コスト3・重さ1
   FREE:   t('FREE', '気まま', ['U', 'D', 'L', 'R'], buy(2), 3),
   REST:   t('REST', 'ひと休み', [], rem(2), 3),
   // ご褒美：額4（コスト3）→ 額2＋上で止まったら決心チップ1枚（コスト2）
-  TREAT:  t('TREAT', 'ご褒美', [], buy(2), 2, { stopChip: 1, oneShot: true, note: 'この上で止まったら，手番の終わりに決心チップを1枚もらう．使い切り' }),
+  TREAT:  t('TREAT', 'ご褒美', [], buy(2), 2, { stopChip: 1, oneShot: true, note: 'この上で止まったら，手番の終わりに決心チップを1枚もらう' }),
   // 大掃除：コスト5・衝動2 → コスト4・衝動1
   // 使い切り：作り直しただけでは無理に買わせても勝率 16〜24%（ふつうのタイルは買うと袋に入り，あとで捨てる手間になる）．使ったら市場へ戻すことにした
-  CLEAN:  t('CLEAN', '大掃除', [], rem(4), 4, { buyNeed: 1, oneShot: true, note: '使い切り' }),
+  CLEAN:  t('CLEAN', '大掃除', [], rem(4), 4, { buyNeed: 1, oneShot: true }),
   // v0.5：ルンバ 5→6，大掃除の日 4→6（強いボット同士だと勝者の全員が持っていた）
   ROOMBA:   t('ROOMBA', 'ルンバ', [], NO_FX, 6, { perm: true, weight: 0, buyNeed: 1, note: '手番の終わりに，どこで止まっても置いたタイルから1枚を排除できる（条件・重さなし）' }),
-  BIGDAY:   t('BIGDAY', '大掃除の日', [], NO_FX, 6, { perm: true, weight: 0, buyNeed: 2, note: '捨てるマスで止まったら，置いたタイルを何枚でも排除できる（量・重さを無視）' }),
+  // v0.8：コスト 6→5．効果はルール bigday で変わる（minus1：全部のタイルの重さ −1／all：何枚でも）
+  BIGDAY:   t('BIGDAY', '大掃除の日', [], NO_FX, 5, { perm: true, weight: 0, buyNeed: 2, note: 'ルールで変わる：全部のタイルの重さ −1（1→0，2→1．排除の条件はそのまま）／量のマスで置いたタイルを何枚でも排除' }),
   BAG:      t('BAG', '大容量ゴミ袋', [], NO_FX, 4, { perm: true, weight: 0, buyNeed: 2, note: '捨てるマスで止まったら，捨て山からも量と同じ枚数まで排除できる（重さなし）' }),
   COMPASS:  t('COMPASS', 'コンパス', [], NO_FX, 6, { perm: true, weight: 0, buyNeed: 1, note: '矢印のあるタイルを好きな向きに出られる' }),
   KODAWARI: t('KODAWARI', 'こだわり', [], NO_FX, 4, { perm: true, weight: 0, buyNeed: 1, note: '止まったマスの額・量 +1' }),
@@ -130,11 +132,16 @@ export const topAt = <T extends { kind: OKind; pos: { x: number; y: number } }>(
 export const condFree = (perms: readonly OKind[], placed: readonly { kind: OKind }[]) => perms.includes('KOKOROE') || placed.some(c => TILES[c.kind].freeDrop);
 
 /** 置いたタイルとして排除できない（盤に残る棚，使い切り．使い切りは最後の1枚なら排除できる） */
-export const lockedOnBoard = (k: OKind, owned: number) => !!TILES[k].stay || (!!TILES[k].oneShot && owned > 1);
+export const lockedOnBoard = (k: OKind, owned: number, oneShot = true) => !!TILES[k].stay || (oneShot && !!TILES[k].oneShot && owned > 1);
 /** 手放すと決心チップ：強い（どこでも）＝捨てにくいタイル，弱い（理性の列でだけ）＝ふつうのタイル．安いタイル・量のタイルには付けない */
 export const DROP_CHIP: Partial<Record<OKind, 'strong' | 'calm'>> = { MEMO: 'strong', REST: 'strong', SWING: 'strong', BR: 'calm', BREATH: 'calm', CALM: 'calm', DRAG: 'calm' };
 /** そのタイルを列 x で排除したときにもらえる決心チップ（ルール dropChips のとき） */
 export const dropChipOf = (k: OKind, x: number) => (DROP_CHIP[k] === 'strong' ? 1 : DROP_CHIP[k] === 'calm' && x < 0 ? 1 : 0);
+/** 大掃除の日の効果の文（ルール bigday） */
+export const BIGDAY_TEXT = { minus1: '排除するとき，全部のタイルの重さ −1（1→0，2→1）．排除の条件（理性n）はそのまま', all: '捨てるマスで止まったら，置いたタイルを何枚でも排除できる（量・重さを無視）' };
+/** 効果の補足（ルールで変わるものを含む） */
+export const tileNote = (k: OKind, r: { bigday: 'minus1' | 'all'; oneShot: boolean }): string | undefined =>
+  k === 'BIGDAY' ? BIGDAY_TEXT[r.bigday] : TILES[k].oneShot && r.oneShot ? [TILES[k].note, '使い切り'].filter(Boolean).join('．') : TILES[k].note;
 /** 使い切りの文 */
 export const ONE_SHOT_TEXT = '使い切り（置いた手番の終わりに市場へ戻る．排除はできない．最後の1枚なら戻らない）';
 
@@ -143,13 +150,17 @@ export const isPerm = (k: OKind) => !!TILES[k].perm;
 export const UNLIMITED_KINDS: OKind[] = ['DOWN'];
 /** 理性のお気に入り（v0.7 から「すべて」に入る） */
 export const CALM_PERMS: OKind[] = ['YUTORI', 'KOKOROE', 'KAKEIBO'];
-export const MARKET: OKind[] = ['DOWN', 'BR', 'BREATH', 'SWING', 'UP2', 'RUSH', 'CALM', 'DOWN2', 'LIGHT', 'DRAG', 'MEMO', 'FREE', 'REST', 'TREAT', 'CLEAN', ...PERMS, ...CALM_PERMS];
+/** v0.7 までの「すべて」（軽やか・大掃除を含む）．評価関数の特徴量の並びはこの順のまま */
+export const MARKET_V07: OKind[] = ['DOWN', 'BR', 'BREATH', 'SWING', 'UP2', 'RUSH', 'CALM', 'DOWN2', 'LIGHT', 'DRAG', 'MEMO', 'FREE', 'REST', 'TREAT', 'CLEAN', ...PERMS, ...CALM_PERMS];
+/** v0.8：軽やか・大掃除を外した（使い切りをやめると，買うと損なタイルに戻るため） */
+export const RETIRED: OKind[] = ['LIGHT', 'CLEAN'];
+export const MARKET: OKind[] = MARKET_V07.filter(k => !RETIRED.includes(k));
 /** 試作のタイル（「すべて」のセットには入らない．自分で選ぶ・検証のときだけ並ぶ） */
 /** お気に入りの全部（試作を含む） */
 export const ALL_PERMS: OKind[] = [...PERMS, ...CALM_PERMS];
 export const EXPERIMENTAL: OKind[] = ['MOMENTUM', 'BACK', 'STACK', 'SHELF'];
 /** 市場に並びうる種類の全部（並び順もこの順） */
-export const BUYABLE: OKind[] = [...MARKET.filter(k => !CALM_PERMS.includes(k)), ...EXPERIMENTAL, ...CALM_PERMS]; // 評価関数の特徴量の並び（v0.6 まで）を変えない
+export const BUYABLE: OKind[] = [...MARKET_V07.filter(k => !CALM_PERMS.includes(k)), ...EXPERIMENTAL, ...CALM_PERMS]; // 評価関数の特徴量の並び（v0.6 まで）を変えない
 /** 盤に置くお気に入り（ルール favBoard のとき，取得したら自分の盤の1マスに置く） */
 export const FURN_KINDS: OKind[] = ['BIGDAY', 'ROOMBA'];
 
@@ -160,6 +171,8 @@ export const fxText = (fx: Fx) => (fx.kind === 'buy' ? `額${fx.amount}` : fx.ki
 
 /** ルールで変わる部分：重さ（重い／v0.1）とガラクタの矢印（→だけ／4方向） */
 export interface TileRules { weights: 'heavy' | 'light'; junk: 'right' | 'four' }
+/** 在庫に限りがない種類か（ルール downStock が unlimited のときの片付けたい） */
+export const isUnlimited = (k: OKind, r: { downStock: 'players' | 'unlimited' }) => r.downStock === 'unlimited' && UNLIMITED_KINDS.includes(k);
 export const weightOf = (k: OKind, r: TileRules) => (r.weights === 'heavy' ? TILES[k].heavy ?? TILES[k].weight : TILES[k].weight);
 export const tileDirs = (k: OKind, r: TileRules): Dir[] => (k === 'JUNK' && r.junk === 'right' ? ['R'] : TILES[k].dirs);
 
@@ -184,7 +197,8 @@ export const TILE_SETS: TileSet[] = [
     tiles: ['DOWN', 'SWING', 'FREE', 'MEMO', 'UP2', 'RUSH', 'DOWN2', 'TREAT', 'CLEAN', 'COMPASS', 'BIGDAY'] },
   { id: 'all', label: 'すべて', note: `全${MARKET.length}種類`, tiles: [...MARKET] },
   // ゆとりはセットに入れていない：ためらいを無視する効果は，弱めても持った人の勝率倍率が 2.2〜2.4 になった（作り直しが要る）
-  { id: 'calm', label: 'お気に入り5種（v0.6 まで）', note: '理性のお気に入り（ゆとり・手放す覚悟・家計簿）を外す', tiles: MARKET.filter(k => !CALM_PERMS.includes(k)) },
+  { id: 'v07', label: 'すべて（v0.7 まで）', note: '軽やか・大掃除を含む', tiles: [...MARKET_V07] },
+  { id: 'calm', label: 'お気に入り5種（v0.6 まで）', note: '理性のお気に入り（ゆとり・手放す覚悟・家計簿）を外す', tiles: MARKET_V07.filter(k => !CALM_PERMS.includes(k)) },
   { id: 'random', label: 'ランダム', note: '片付けたい＋ふつうのタイル7種＋お気に入り2種をくじで', tiles: [] },
 ];
 

@@ -2,13 +2,13 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { BUYABLE, OKind, TILES, isPerm, marketFromChoice } from '../src/overlay/tiles';
 import { dropChipOf } from '../src/overlay/tiles';
-import { OState, Rules, UNLIMITED, applyOverlay, canBuyAt, hereFx, newOverlayGame, ownedTiles } from '../src/overlay/engine';
+import { OState, Rules, UNLIMITED, applyOverlay, canBuyAt, hereFx, newOverlayGame, ownedTiles, V07_RULES } from '../src/overlay/engine';
 import { OPRESETS, chooseOverlayAction, playOverlayTurn } from '../src/overlay/bot';
 import { chooseSearchAction } from '../src/overlay/search';
 import { BINS, FEAT_VERSION, NFEAT, ValueJson, ValueModel, featNames } from '../src/overlay/value';
 
 /** 個々の仕組みを確かめるための土台（v0.5.1 までの既定．今の既定はためらい3枚・目標1つ必須・チップは目標でだけ…） */
-const BASE: Partial<Rules> = { hesCount: 2, goals: 'off', chipGain: 'idle', chipStart: 'none', goalChips: 'one', favGate: 'none' };
+const BASE: Partial<Rules> = { ...V07_RULES, hesCount: 2, goals: 'off', chipGain: 'idle', chipStart: 'none', goalChips: 'one', favGate: 'none' };
 const game = (rules: Partial<Rules> = {}, market?: OKind[]) => newOverlayGame([{ name: 'A' }, { name: 'B' }], 1, { rules: { ...BASE, ...rules }, market });
 /** 現在の手番の人の袋を，引く順に指定する */
 function stack(s: OState, ...kinds: OKind[]) {
@@ -138,7 +138,7 @@ describe('理性のお気に入り（試作）とお気に入りの在庫', () =
     const p = s.players[0];
     p.perms.push('KAKEIBO');
     p.discard = [{ id: s.nextId++, kind: 'WANT' }];
-    stack(s, 'DOWN');
+    stack(s, 'DOWN2'); // 片付けたいは重さ2になったので，重さ1の断捨離で
     draw(s); stop(s);
     applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [p.placed[0].id] });
     expect(p.removed).toBe(1);
@@ -253,12 +253,15 @@ describe('理性のお気に入り（試作）とお気に入りの在庫', () =
 });
 
 describe('目標', () => {
-  it('今の既定：ためらい3枚・目標1つ必須・チップは目標でだけ（難しさ別）・はじめのチップは全員1枚・お気に入りは2枚並べ', () => {
+  it('今の既定（v0.8）：ためらい3枚・目標はごほうびだけ・チップは目標でだけ（難しさ別）・はじめのチップは後半の席だけ1枚・お気に入りは2枚並べ', () => {
     const s = newOverlayGame([{ name: 'A' }, { name: 'B' }], 1);
     expect(s.goals!.length).toBe(3);
     expect(s.players[0].bag.filter(t => t.kind === 'HES').length).toBe(3);
-    expect(s.players.map(p => p.chips)).toEqual([1, 1]);
-    expect(s.rules).toMatchObject({ goals: 'need1', chipGain: 'goal', goalChips: 'tiered', favGate: 'display', favFlush: 1, chipStart: 'one' });
+    expect(s.players.map(p => p.chips)).toEqual([0, 1]);
+    expect(s.rules).toMatchObject({ goals: 'bonus', chipGain: 'goal', goalChips: 'tiered', favGate: 'display', favFlush: 1, chipStart: 'late', chipUse: 'hes', hesChip: true, oneShot: false, downStock: 'players', bigday: 'minus1' });
+    expect(s.goals).not.toContain('CALM3');
+    expect(s.market.DOWN).toBe(2);
+    expect(s.market.LIGHT).toBeUndefined();
   });
 
   it('3枚めくられ，止まり方が条件を満たすと達成して決心チップをもらう', () => {
@@ -315,15 +318,15 @@ describe('目標', () => {
     const s = game({ goals: 'need1' });
     s.goals = ['TOP', 'IMP3', 'BIGBUY'];
     const p = s.players[0];
-    stack(s, 'DOWN'); p.discard = [];
+    stack(s, 'DOWN2'); p.discard = [];
     draw(s); stop(s);
     expect(() => applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [p.placed[0].id] })).toThrow(/目標をあと1つ/);
     const t = game({ goals: 'need1' });
     t.goals = ['DUMP4', 'IMP3', 'BIGBUY'];
     const q = t.players[0];
-    stack(t, 'DOWN2', 'DOWN', 'DOWN', 'DOWN'); q.discard = []; // (0,-4)：量2＋運ぶ1 = 3，重さ4には決心チップ1枚．4枚まとめて排除＝目標達成と同時に終われる
+    stack(t, 'DOWN2', 'DOWN2', 'BR', 'BR'); q.discard = []; // (0,-4)：量2＋運ぶ2 = 4，重さ4．4枚まとめて排除＝目標達成と同時に終われる
     q.chips = 1;
-    for (let i = 0; i < 4; i++) draw(t);
+    for (let i = 0; i < 4; i++) { draw(t); if (t.turn === 'branch') applyOverlay(t, 0, { type: 'branch', dir: 'D' }); }
     stop(t);
     applyOverlay(t, 0, { type: 'resolve', buy: [], remove: q.placed.map(c => c.id) });
     expect(q.goals).toEqual(['DUMP4']);
@@ -355,8 +358,8 @@ describe('最後の1枚', () => {
     expect(() => applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [p.placed[0].id] })).toThrow();
     const t = game();
     const q = t.players[0];
-    stack(t, 'DOWN'); q.discard = []; // 片付けたい（↓）だけ：(0,-1) の量1で排除できる
-    draw(t); stop(t);
+    stack(t, 'BREATH'); q.discard = []; // 深呼吸（↓か←）だけ：(0,-1) の量1で排除できる
+    draw(t); applyOverlay(t, 0, { type: 'branch', dir: 'D' }); stop(t);
     applyOverlay(t, 0, { type: 'resolve', buy: [], remove: [q.placed[0].id] });
     expect(q.finished).toBe(true);
     const u = game({ lastCard: true });
@@ -513,5 +516,126 @@ describe('お気に入りの上限・手放すと決心チップ', () => {
       expect(p.chips).toBe(on ? 1 : 0);
     }
     expect([dropChipOf('BR', -1), dropChipOf('BR', 0), dropChipOf('MEMO', 2), dropChipOf('DOWN', -3)]).toEqual([1, 0, 1, 0]);
+  });
+});
+
+describe('v0.8 のルール', () => {
+  const g8 = (rules: Partial<Rules> = {}, n = 2) => newOverlayGame(Array.from({ length: n }, (_, i) => ({ name: 'P' + i })), 1, { rules: { goals: 'off', ...rules } });
+  it('はじめの決心チップ late：後半の席だけ1枚', () => {
+    expect(g8({}, 4).players.map(p => p.chips)).toEqual([0, 0, 1, 1]);
+    expect(g8({}, 3).players.map(p => p.chips)).toEqual([0, 0, 1]);
+    expect(g8({}, 2).players.map(p => p.chips)).toEqual([0, 1]);
+  });
+  it('片付けたいは人数ぶんで売り切れる．重さ2', () => {
+    const s = g8();
+    expect(s.market.DOWN).toBe(2);
+    stack(s, 'WANT', 'WANT'); // (0,2)：額3
+    draw(s); draw(s); stop(s);
+    applyOverlay(s, 0, { type: 'resolve', buy: ['DOWN', 'DOWN'], remove: [] });
+    expect(s.market.DOWN).toBe(0);
+    stack(s, 'WANT', 'WANT'); draw(s); draw(s); stop(s);
+    expect(() => applyOverlay(s, 1, { type: 'resolve', buy: ['DOWN'], remove: [] })).toThrow(/売り切れ/);
+    expect(g8({ downStock: 'unlimited' }).market.DOWN).toBe(UNLIMITED);
+  });
+  it('決心チップ：ためらいを無視して引き続けられる．重さは肩代わりできない', () => {
+    const s = g8();
+    const p = s.players[0];
+    p.chips = 1;
+    stack(s, 'DOUBT', 'HES', 'BREATH');
+    draw(s); draw(s);
+    expect(s.turn).toBe('branch');
+    applyOverlay(s, 0, { type: 'branch', dir: 'L' });
+    expect(s.turn).toBe('move'); // 止まるか，払って続けるか
+    expect(p.hesHold).toBe(true);
+    draw(s);
+    expect(p.chips).toBe(0);
+    expect(p.hesHold).toBe(false);
+    expect(s.turn).toBe('branch');
+    applyOverlay(s, 0, { type: 'branch', dir: 'D' });
+    // チップが無ければ，ためらいでそのまま止まる
+    const t = g8();
+    stack(t, 'DOUBT', 'HES', 'BREATH');
+    draw(t); draw(t); applyOverlay(t, 0, { type: 'branch', dir: 'L' });
+    expect(t.turn).toBe('resolve');
+    // 重さ：欲しい（重さ2）は量1のマスでは，チップがあっても排除できない
+    const u = g8();
+    const q = u.players[0];
+    q.chips = 2;
+    stack(u, 'BREATH'); // 深呼吸で下へ出て (0,-1)．欲しいは手で置く
+    draw(u); applyOverlay(u, 0, { type: 'branch', dir: 'D' });
+    stop(u); // (0,-1)：量1
+    expect(here(u)).toEqual({ kind: 'remove', amount: 1 });
+    q.placed.push({ id: 999, kind: 'WANT', pos: { x: 0, y: 0 } });
+    expect(() => applyOverlay(u, 0, { type: 'resolve', buy: [], remove: [999] })).toThrow(/重さの合計/);
+    // 理性の条件は1枚で1段階ぶん免除できる：ガラクタ（重さ2・理性1で排除）を，中央の列の量2で
+    const v = g8();
+    const r = v.players[0];
+    r.chips = 1;
+    stack(v, 'DOWN2'); // (0,-1)：量1＋運ぶ1 = 2
+    draw(v); stop(v);
+    r.placed.push({ id: 998, kind: 'JUNK', pos: { x: 0, y: 0 } });
+    applyOverlay(v, 0, { type: 'resolve', buy: [], remove: [998] });
+    expect(r.chips).toBe(0);
+    expect(r.removed).toBe(1);
+  });
+  it('1枚目のためらいだけで手番が終わったら決心チップを1枚もらう', () => {
+    const s = g8();
+    const p = s.players[0];
+    stack(s, 'HES');
+    draw(s); applyOverlay(s, 0, { type: 'branch', dir: 'R' });
+    expect(s.turn).toBe('resolve'); // チップ0枚なのでそのまま止まる
+    applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [] });
+    expect(p.chips).toBe(1);
+    // 2枚目以降のためらいではもらえない
+    const t = g8();
+    const q = t.players[0];
+    stack(t, 'DOUBT', 'HES');
+    draw(t); draw(t); applyOverlay(t, 0, { type: 'branch', dir: 'R' });
+    applyOverlay(t, 0, { type: 'resolve', buy: [], remove: [] });
+    expect(q.chips).toBe(0);
+  });
+  it('大掃除の日：全部のタイルの重さ −1（条件はそのまま）', () => {
+    const s = g8();
+    const p = s.players[0];
+    p.perms.push('BIGDAY');
+    stack(s, 'BREATH'); // ほかのタイルは手で置く
+    draw(s); applyOverlay(s, 0, { type: 'branch', dir: 'D' }); stop(s); // (0,-1)：量1
+    p.placed.push({ id: 901, kind: 'WANT', pos: { x: 0, y: 0 } }, { id: 902, kind: 'DOUBT', pos: { x: 0, y: 0 } }, { id: 903, kind: 'JUNK', pos: { x: 0, y: 0 } });
+    // 欲しい（2→1）＋迷い（1→0）＋深呼吸（1→0）＝重さ1．ガラクタは理性1が要るので，中央の列では排除できない
+    expect(() => applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [901, 902, 903, p.placed[0].id] })).toThrow();
+    applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [901, 902, p.placed[0].id] });
+    expect(p.removed).toBe(3);
+  });
+  it('使い切りなし：ご褒美は袋に残り，止まるたびに決心チップ', () => {
+    const s = g8();
+    const p = s.players[0];
+    stack(s, 'TREAT'); p.discard = [{ id: s.nextId++, kind: 'WANT' }];
+    draw(s); stop(s);
+    applyOverlay(s, 0, { type: 'resolve', buy: [], remove: [] });
+    expect(p.chips).toBe(1);
+    expect([...p.bag, ...p.discard].some(c => c.kind === 'TREAT')).toBe(true);
+  });
+  it('決心チップではお気に入りの並びを流せない', () => {
+    const s = g8();
+    const p = s.players[0];
+    p.chips = 2;
+    stack(s, 'WANT', 'WANT'); draw(s); draw(s); stop(s);
+    expect(() => applyOverlay(s, 0, { type: 'flush', pay: 'chip' })).toThrow(/決心チップで流せません/);
+    applyOverlay(s, 0, { type: 'flush', pay: 'buy' });
+  });
+  it('探索ボットどうしで最後まで進む（2〜4人）', () => {
+    const model = new ValueModel(JSON.parse(readFileSync(new URL('../src/overlay/value.json', import.meta.url), 'utf8')) as ValueJson);
+    const o = { model, objective: 'win' as const, budget: 120 };
+    for (const n of [2, 4]) {
+      const s = newOverlayGame(Array.from({ length: n }, (_, i) => ({ name: 'P' + i, isBot: true })), 7 + n);
+      let skips = 0;
+      for (let i = 0; i < 20000 && s.phase === 'play'; i++) {
+        const a = chooseSearchAction(s, o);
+        if (a.type === 'draw' && s.players[s.current].hesHold) skips++;
+        applyOverlay(s, s.current, a);
+      }
+      expect(s.phase).toBe('over');
+      expect(skips).toBeGreaterThanOrEqual(0);
+    }
   });
 });

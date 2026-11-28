@@ -30,6 +30,8 @@ export interface PRec {
   chipsUsed: number; chipsGot: number;
   /** お気に入りの並びを流した回数 */
   flushes?: number;
+  /** 決心チップでためらいを無視した回数／1枚目のためらいだけで手番が終わった回数 */
+  hesSkips?: number; hesFirst?: number;
   /** 目標を達成したラウンド（達成順） */
   goalRounds?: number[];
   /** 達成した目標 */
@@ -82,6 +84,7 @@ export function playGame(agents: Agent[], who: string[], seed: number, o: PlayOp
         if (isPerm(k)) p[seat].permRound[k] = s.round;
       }
       if (kind === 'gacha' && s.gacha.length) p[seat].gacha++;
+      if (s.rules.hesChip && pl.placed.length === 1 && pl.placed[0].kind === 'HES') p[seat].hesFirst = (p[seat].hesFirst ?? 0) + 1;
       const before = pl.chips ?? 0;
       const g0 = pl.goals?.length ?? 0, r0 = s.round;
       applyOverlay(s, seat, a);
@@ -89,6 +92,7 @@ export function playGame(agents: Agent[], who: string[], seed: number, o: PlayOp
       const d = (pl.chips ?? 0) - before;
       if (d > 0) p[seat].chipsGot += d; else p[seat].chipsUsed -= d;
     } else {
+      if (a.type === 'draw' && pl.hesHold) { p[seat].hesSkips = (p[seat].hesSkips ?? 0) + 1; p[seat].chipsUsed++; }
       if (a.type === 'flush') { p[seat].flushes = (p[seat].flushes ?? 0) + 1; if (a.pay === 'chip') p[seat].chipsUsed++; }
       applyOverlay(s, seat, a);
     }

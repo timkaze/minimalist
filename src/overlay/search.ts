@@ -4,7 +4,7 @@
 //   点数：mean = あと何手番かの平均（小さいほど良い）／win = 相手の残り手番の分布も見た勝つ確率
 // 仕様：Memories/01_BoardGames/ミニマリスト_オーバーレイ版_ボット強化_仕様.md
 
-import { ALL_PERMS as PERMS, BUYABLE, Dir, FURN_KINDS, OKind, TILES, UNLIMITED_KINDS, isPerm, topAt, DROP_CHIP } from './tiles';
+import { ALL_PERMS as PERMS, BUYABLE, Dir, FURN_KINDS, OKind, TILES, isUnlimited, isPerm, topAt, DROP_CHIP } from './tiles';
 import {
   Env, Furn, MAX_CHIPS, OAction, OPlayer, OState, Placed, Pos, Rules, Tile, X_MAX, X_MIN, canBuyAt, canDraw, canDropAt, canMove, canPlaceFurn, chipNeed,
   dirsOf, discardLimit, GOAL_KINDS, goalReward, effectAt, envOf, exitPos, goalMet, goalNeed, hasGlobal, isDeep, isLastCard, ownedTiles, samePos, yMax, yMin,
@@ -31,7 +31,8 @@ export interface SearchOpts {
   rand?: () => number;
 }
 
-interface Node { pos: Pos; hes: number; placed: Placed[]; bag: number[]; bagN: number; disc: number[]; discN: number }
+/** spent：この手番にためらいを無視するのに払う決心チップ（探索の中で払ったぶん．実際の持ち数からはまだ引いていない） */
+interface Node { pos: Pos; hes: number; placed: Placed[]; bag: number[]; bagN: number; disc: number[]; discN: number; spent?: number }
 /** 止まったときの選び方．flow・disc は種類ごとの枚数（置いたタイル／捨て山から排除），roomba は種類（-1 = 使わない） */
 interface Plan { u: number; buy: OKind[]; flow: number[] | null; roomba: number; disc: number[] | null; place?: Furn[] }
 /** 盤の様子（お気に入りの置き場所と棚）の特徴量 */
@@ -153,6 +154,8 @@ class Turn {
 
   /** 今見ている止まり方で，ご褒美の上にいてもらえる決心チップ（plan のあいだだけ） */
   private stopChip = 0;
+  /** 今見ている止まり方までに，ためらいを無視するのに払った決心チップ（plan のあいだだけ） */
+  private walkSpent = 0;
   /** 手放すと決心チップ（ルール dropChips）：種類ごとの強さ．plan のあいだ，止まる前の捨て山（＋置いたタイル）と列を覚えておき，減ったぶんを排除とみなす */
   private dropW: Array<'strong' | 'calm' | undefined> | null = null;
   private dropBase: number[] | null = null;
@@ -180,7 +183,7 @@ class Turn {
       const dyn = ((nRemoved >= 4 ? GOAL_BIT.DUMP4 : 0) | (buyCost >= 5 ? GOAL_BIT.BIGBUY : 0)) & this.goalsOn & ~ext.g;
       if (dyn) ext = this.ext(ext.shelves, ext.furn, ext.g | dyn);
     }
-    let chips = this.chips - spent + this.stopChip + this.dropGain(disc);
+    let chips = this.chips - this.walkSpent - spent + this.stopChip + this.dropGain(disc);
     if (this.rules.chips) {
       chips = Math.min(MAX_CHIPS, chips + this.gain(ext.g & ~this.g0)); // 目標を達成したぶん
       if (((this.rules.chipGain === 'idle' && nRemoved === 0) || this.hasKakeibo) && chips < MAX_CHIPS) chips++;
@@ -208,7 +211,7 @@ class Turn {
     // 使い切り：排除できず，手番の終わりに持ち物から外れる（最後の1枚なら残る）
     let owned = node.bagN + node.discN + node.placed.length;
     for (const t of node.placed) {
-      if (!TILES[t.kind].oneShot || owned <= 1) continue;
+      if (!this.rules.oneShot || !TILES[t.kind].oneShot || owned <= 1) continue;
       const k = KIDX[t.kind];
       pc[k]--; discP[k]--; owned--; tag += 'o';
     }
@@ -313,7 +316,7 @@ class Turn {
     let mask = this.permMask;
     for (const k of buy) {
       if (isPerm(k)) mask |= PERM_BIT[k]; else d[KIDX[k]]++;
-      if (!UNLIMITED_KINDS.includes(k)) stk[MIDX[k]]--;
+      if (!isUnlimited(k, this.rules)) stk[MIDX[k]]--;
     }
     const place = this.placeOf(buy);
     const ext = place.length ? this.ext(st.shelves, [...this.furn0, ...place], st.ext.g) : st.ext;
@@ -354,7 +357,7 @@ class Turn {
   }
 
   private removePlan(node: Node, st: Sit, bag: ArrayLike<number>, discP: number[], q: number, deep: boolean, discOk: number[], cache: boolean): Plan {
-    const x = node.pos.x, rules = this.rules, pc = st.pc;
+    const x = node.pos.x, rules = this.rules, pc = st.pc, have = this.chips - this.walkSpent;
     const nc = this.noCond || node.placed.some(c => TILES[c.kind].freeDrop); // 軽やかが盤にあれば条件なし
     const kinds: number[] = [];
     for (let k = 0; k < NK; k++) if (pc[k] > 0) kinds.push(k);
@@ -375,7 +378,7 @@ class Turn {
           if (cur[k] >= pc[k]) continue;
           ts.push({ id: 0, kind: BAG_KINDS[k] });
           const need = chipNeed(ts, [], x, q, rules, this.hasBigday, nc);
-          if (need <= this.chips) {
+          if (need <= have) {
             d[k]--; const v = this.finish(bag, d, this.permMask, need, st.base + ts.length, this.stock, st.ext, cache, cur[JUNK_K] > 0 || k === JUNK_K); d[k]++;
             if (v > bu) { bu = v; bk = k; }
           }
@@ -389,7 +392,7 @@ class Turn {
     const rec = (i: number) => {
       if (i === kinds.length) {
         const need = chipNeed(tiles, [], x, q, rules, this.hasBigday, nc);
-        if (need > this.chips) return;
+        if (need > have) return;
         const d = discP.slice();
         for (const k of kinds) d[k] -= flow[k];
         const u = this.finish(bag, d, this.permMask, need, st.base + tiles.length, this.stock, st.ext, cache, flow[JUNK_K] > 0);
@@ -436,11 +439,13 @@ class Turn {
 
   /** 今のマスで止まったときの一番良い選び方．exact：実際に止まったあと（取得は全部の組み合わせを試す．運試しは引いた結果を使う） */
   plan(node: Node, exact: boolean, st: Sit = this.sit(node)): Plan {
-    const saved = this.stopChip, savedBase = this.dropBase, savedX = this.dropX;
+    const saved = this.stopChip, savedBase = this.dropBase, savedX = this.dropX, savedSpent = this.walkSpent;
     const top = this.rules.chips ? topAt(node.placed, node.pos) : undefined;
-    this.stopChip = top ? TILES[top.kind].stopChip ?? 0 : 0;
+    // ご褒美の上／1枚目のためらいだけで終わる手番
+    this.stopChip = (top ? TILES[top.kind].stopChip ?? 0 : 0) + (this.rules.chips && this.rules.hesChip && node.placed.length === 1 && node.placed[0].kind === 'HES' ? 1 : 0);
+    this.walkSpent = node.spent ?? 0;
     if (this.dropW) { this.dropBase = st.discP.slice(); this.dropX = node.pos.x; }
-    try { return this.planAt(node, exact, st); } finally { this.stopChip = saved; this.dropBase = savedBase; this.dropX = savedX; }
+    try { return this.planAt(node, exact, st); } finally { this.stopChip = saved; this.dropBase = savedBase; this.dropX = savedX; this.walkSpent = savedSpent; }
   }
 
   private planAt(node: Node, exact: boolean, st: Sit): Plan {
@@ -519,7 +524,7 @@ class Turn {
     const fx = effectAt(this.env, node.placed, node.pos);
     const pc = countsOf(node.placed);
     const st = this.sit(node);
-    let key = `${fx.kind[0]}${fx.amount}:${node.pos.x < -2 ? -2 : node.pos.x > 2 ? 2 : node.pos.x}:${isDeep(node.pos.y, this.s.board) ? 1 : 0}:${node.discN}:${st.tag}:`;
+    let key = `${node.spent ?? 0}${fx.kind[0]}${fx.amount}:${node.pos.x < -2 ? -2 : node.pos.x > 2 ? 2 : node.pos.x}:${isDeep(node.pos.y, this.s.board) ? 1 : 0}:${node.discN}:${st.tag}:`;
     for (let i = 0; i < NK; i++) key += String.fromCharCode(48 + pc[i], 48 + node.bag[i]);
     let v = this.stopCache.get(key);
     if (v === undefined) { v = this.plan(node, false, st).u; if (this.stopCache.size > 100000) this.stopCache.clear(); this.stopCache.set(key, v); }
@@ -534,15 +539,17 @@ class Turn {
     if (!this.rules.refill || node.discN === 0) return null;
     return { bag: node.disc, bagN: node.discN, disc: ZERO, discN: 0 };
   }
+  /** 決心チップを払ってためらいを無視できるか（spent：この手番にもう払ったぶん） */
+  private canSkip(spent: number) { return this.rules.chips && this.rules.chipUse === 'hes' && this.chips - spent >= 1; }
   private forced(kind: OKind, hes: number) { return kind === 'HES' && (hes + 1 >= 2 || (this.rules.hes === 'first' && !this.hasYutori)); }
 
   /** 次の1枚で分かれる枝の数（種類×向き．必ず止まるタイルは先を読まないので軽く数える） */
-  private branching(src: { bag: number[] }, hes: number): number {
+  private branching(src: { bag: number[] }, hes: number, spent = 0): number {
     let b = 0;
     for (let k = 0; k < NK; k++) {
       if (!src.bag[k]) continue;
       const kind = BAG_KINDS[k];
-      b += this.forced(kind, hes) ? 0.3 : Math.max(1, dirsOf(kind, this.env).length);
+      b += this.forced(kind, hes) && !this.canSkip(spent) ? 0.3 : Math.max(1, dirsOf(kind, this.env).length);
     }
     return Math.max(1, b);
   }
@@ -552,15 +559,23 @@ class Turn {
     const kind = BAG_KINDS[k];
     const bag = src.bag.slice(); bag[k]--;
     const placed = [...node.placed, { id: 0, kind, pos: node.pos }];
-    const child: Node = { pos: exitPos(this.env, placed, node.pos, kind, dir), hes: node.hes + (kind === 'HES' ? 1 : 0), placed, bag, bagN: src.bagN - 1, disc: src.disc, discN: src.discN };
-    return this.forced(kind, node.hes) ? this.stopValue(child) : this.value(child, budget);
+    const spent = node.spent ?? 0;
+    const child: Node = { pos: exitPos(this.env, placed, node.pos, kind, dir), hes: node.hes + (kind === 'HES' ? 1 : 0), placed, bag, bagN: src.bagN - 1, disc: src.disc, discN: src.discN, spent };
+    if (!this.forced(kind, node.hes)) return this.value(child, budget);
+    // ためらいで止まる．決心チップがあれば，払って引き続けるほうと比べる
+    const sv = this.stopValue(child);
+    if (!this.canSkip(spent)) return sv;
+    const paid: Node = { ...child, spent: spent + 1 };
+    const next = this.drawable(paid);
+    if (!next || budget < this.branching(next, paid.hes, paid.spent)) return sv;
+    return Math.max(sv, this.drawValue(paid, budget));
   }
 
   /** 止めるか引くかの良いほう．予算が枝の数に足りなければ，ここで止めるものとして数える */
   value(node: Node, budget: number): number {
     const sv = this.stopValue(node);
     const src = this.drawable(node);
-    if (!src || budget < this.branching(src, node.hes)) return sv;
+    if (!src || budget < this.branching(src, node.hes, node.spent ?? 0)) return sv;
     return Math.max(sv, this.drawValue(node, budget));
   }
 
@@ -568,7 +583,7 @@ class Turn {
   drawValue(node: Node, budget: number): number {
     const src = this.drawable(node);
     if (!src) return -Infinity;
-    const child = budget / this.branching(src, node.hes);
+    const child = budget / this.branching(src, node.hes, node.spent ?? 0);
     let total = 0;
     for (let k = 0; k < NK; k++) {
       if (!src.bag[k]) continue;
@@ -599,7 +614,7 @@ class Turn {
 const turns = new WeakMap<OState, Turn>();
 function turnOf(s: OState, o: SearchOpts): Turn {
   let t = turns.get(s);
-  if (!t || t.round !== s.round || t.seat !== s.current || t.o !== o || t.p !== s.players[s.current] || t.flushes !== (s.players[s.current].flushes ?? 0)) turns.set(s, t = new Turn(s, o));
+  if (!t || t.round !== s.round || t.seat !== s.current || t.o !== o || t.p !== s.players[s.current] || t.flushes !== (s.players[s.current].flushes ?? 0) || t.chips !== (s.rules.chips ? s.players[s.current].chips ?? 0 : 0)) turns.set(s, t = new Turn(s, o));
   return t;
 }
 
@@ -679,6 +694,8 @@ export function chooseSearchAction(s: OState, o: SearchOpts): OAction {
       if (!canDraw(p, s.rules) || (s.rules.lastCard && isLastCard(p))) return { type: 'stop' };
       if (!p.placed.length) return { type: 'draw' };
       const node = t.root();
+      // ためらいで止まるところ：決心チップ1枚を払って引き続けるか
+      if (p.hesHold) return t.drawValue({ ...node, spent: 1 }, t.budget) > t.stopValue(node) + 1e-9 ? { type: 'draw' } : { type: 'stop' };
       return t.drawValue(node, t.budget) > t.stopValue(node) + 1e-9 ? { type: 'draw' } : { type: 'stop' };
     }
   }
