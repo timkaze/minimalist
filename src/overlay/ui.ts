@@ -117,7 +117,7 @@ function tileHTML(kind: OKind, o: { fx?: Fx; cls?: string; attr?: string; seq?: 
     : o.cost && rules.needs && d.calmNeed ? `<span class="c-imp calm" title="理性${d.calmNeed}以上の列で取得">理${d.calmNeed}</span>` : '';
   const bl = d.perm ? '' : `<span class="c-w" title="捨てる重さ">重${weightOf(kind, rules)}</span>`;
   const br = rules.needs && d.dropNeed ? `<span class="c-calm" title="理性${d.dropNeed}以上の列で排除">理${d.dropNeed}</span>` : '';
-  return `<div class="tile k-${d.perm ? 'perm' : fx.kind} ${dirs.length || d.perm ? '' : 'stay'} ${o.cls ?? ''}" ${o.attr ?? ''} title="${esc(tileTitle(kind))}">
+  return `<div class="tile k-${d.perm ? 'perm' : fx.kind} ${dirs.length || d.perm ? '' : 'stay'} ${o.cls ?? ''}" ${o.attr ?? ''} data-k="${kind}" title="${esc(tileTitle(kind))}">
     ${dirs.map(x => `<i class="ar ${x}"></i>`).join('')}${center}${carry}${once}${dc}<span class="nm">${d.name}</span>${tl}${tr}${bl}${br}</div>`;
 }
 
@@ -283,7 +283,7 @@ function goalsHTML(st: OState): string {
   const need = goalNeed(st.rules);
   return `<div class="goalsbar"><span class="gl">目標${need ? `<small>（${need}つ達成するまで最後の1枚は手放せない）</small>` : ''}</span>${st.goals.map(k => {
     const who = st.players.map((q, i) => (q.goals?.includes(k) ? `<span class="dot p${i}" title="${esc(q.name)}"></span>` : '')).join('');
-    return `<div class="goal ${me >= 0 && st.players[me].goals?.includes(k) ? 'done' : ''}" title="達成すると決心チップ${goalReward(k, st.rules)}枚"><b>${GOALS[k].name}${st.rules.goalChips === 'tiered' && st.rules.chips ? ` <span class="gc">◆${goalReward(k, st.rules)}</span>` : ''}</b><small>${GOALS[k].text}</small><span class="gw">${who}</span></div>`;
+    return `<div class="goal ${me >= 0 && st.players[me].goals?.includes(k) ? 'done' : ''}" data-goal="${k}" title="達成すると決心チップ${goalReward(k, st.rules)}枚"><b>${GOALS[k].name}${st.rules.goalChips === 'tiered' && st.rules.chips ? ` <span class="gc">◆${goalReward(k, st.rules)}</span>` : ''}</b><small>${GOALS[k].text}</small><span class="gw">${who}</span></div>`;
   }).join('')}</div>`;
 }
 
@@ -484,6 +484,89 @@ function turnBanner(): string {
   return `<div class="banner"><span class="dot p${st.current}"></span>${esc(p.name)}の番 <small class="lap">${st.round}周目</small><small>${me >= 0 ? `あなたの番まであと${(me - st.current + st.players.length) % st.players.length}人` : '観戦中'}</small></div>`;
 }
 
+/** 幅の広い画面用と，スマホ用の短い言い方（CSS で片方だけ見せる） */
+const wn = (wide: string, narrow: string) => `<span class="on-wide">${wide}</span><span class="on-narrow">${narrow}</span>`;
+const turnsText = (st: OState, i: number) => (st.phase === 'over' ? `${st.round}回手番` : i === st.current ? `${st.round}回目の手番中` : `手番${st.round - 1 + (i < st.current ? 1 : 0)}回済`);
+const isPhone = () => window.matchMedia('(max-width: 600px)').matches;
+
+/** スマホで盤の上（手番の帯〜盤の見出し）と下（操作バー）に取られる高さ．盤はこれを引いた残りに収まる大きさにする（ui.css） */
+function chromePx(st: OState): number {
+  const seatRows = Math.ceil(st.players.length / 4);
+  return 34 + (st.log.length > 1 ? 21 : 0) + 6 + seatRows * 44 + (st.goals?.length ? 33 : 0) + 30 + 102;
+}
+
+/**
+ * スマホ：場面が変わったときだけ画面を送る（同じ場面では1回．待っているあいだに市場などを見ていても動かさない）
+ *   自分の番が来た・自分の番が終わった → 手番の帯が一番上（盤と操作バーが1画面に入る位置）
+ *   止まった → 止まったマスの効果と取得・排除のパネル
+ */
+let scrollKey = '';
+function autoScroll(st: OState, mine: boolean) {
+  const key = mine ? `${st.round}-${st.current}-${st.turn === 'resolve' ? 'r' : 'm'}` : '';
+  if (key === scrollKey) return;
+  scrollKey = key;
+  if (!isPhone()) return;
+  const header = app.querySelector<HTMLElement>('header'), banner = app.querySelector<HTMLElement>('.banner');
+  const here = app.querySelector<HTMLElement>('.left > .herebox');
+  if (!header || !banner) return;
+  // 手番の帯は画面の上に貼り付くので，帯の位置でなくヘッダーの高さから求める
+  const top = mine && st.turn === 'resolve' && here ? here.getBoundingClientRect().top + window.scrollY - banner.offsetHeight - 6 : header.offsetHeight;
+  window.scrollTo({ top, behavior: 'smooth' });
+}
+
+// ---- タップで説明（スマホではマウスを乗せる説明が出ないので） ----
+
+let tipEl: HTMLElement | null = null;
+let tipKey = ''; // 画面は描き直されるので，同じ場所かどうかは要素でなく中身で比べる
+const closeTip = () => { tipEl?.remove(); tipEl = null; tipKey = ''; };
+
+function seatTipHTML(i: number): string {
+  const st = s!, q = st.players[i];
+  return `<div class="th"><span class="dot p${i}"></span><b>${esc(q.name)}</b>${i === me ? '（あなた）' : ''}${q.finished ? ' ✓達成' : ''}　<span class="muted">${turnsText(st, i)}</span></div>
+    <div>持ち物 <b>${ownedTiles(q).length}</b>枚・排除 <b>${q.removed}</b>枚${st.rules.chips ? `・決心チップ <b class="cg">${'◆'.repeat(q.chips ?? 0) || '0'}</b>` : ''}</div>
+    <div class="chips">${chipsHTML(ownedTiles(q))}</div>
+    ${q.perms.map(k => `<div class="tl"><b class="cg">★${TILES[k].name}</b>：${esc(tileNote(k, st.rules) ?? '')}</div>`).join('')}`;
+}
+
+function goalTipHTML(k: keyof typeof GOALS): string {
+  const st = s!;
+  const who = st.players.map((q, i) => (q.goals?.includes(k) ? `<span class="dot p${i}"></span>${esc(q.name)}` : '')).filter(Boolean);
+  const need = goalNeed(st.rules);
+  return `<div class="th"><b class="cg">目標：${GOALS[k].name}</b></div><div>${GOALS[k].text}</div>
+    <div class="muted">達成すると${st.rules.chips ? `決心チップ${goalReward(k, st.rules)}枚` : '記録される'}（1人1回）${need ? `．${need}つ達成するまで最後の1枚は手放せない` : ''}</div>
+    <div class="tl">達成した人：${who.join('　') || '<span class="muted">まだいません</span>'}</div>`;
+}
+
+/** タップされた場所の説明．選ぶ・押すための場所（ボタン，選べるタイル，選べるマス）は説明を出さない */
+function tipFor(target: Element): { key: string; html: string } | null {
+  if (target.closest('button, a, input, select, summary, label.ck, [data-dir], [data-rm], [data-rb], .tip')) return null;
+  const tile = target.closest<HTMLElement>('.tile[data-k]');
+  if (tile) {
+    const kind = tile.dataset.k as OKind;
+    return { key: `tile:${kind}:${tile.closest('.cell') ? 'board' : ''}`, html: `${infoHTML(kind)}<div class="muted tl">${TILES[kind].perm ? 'お気に入り：取得したら自分の前に置き，効果がずっと続く' : 'タイルの四隅：左上＝コスト（盤の上では置いた順）／右上＝取得の条件／左下＝捨てる重さ／右下＝排除の条件'}</div>` };
+  }
+  const goal = target.closest<HTMLElement>('[data-goal]');
+  if (goal && s) return { key: `goal:${goal.dataset.goal}`, html: goalTipHTML(goal.dataset.goal as keyof typeof GOALS) };
+  const seat = target.closest<HTMLElement>('[data-seat]');
+  if (seat && s) return { key: `seat:${seat.dataset.seat}`, html: seatTipHTML(+seat.dataset.seat!) };
+  const titled = target.closest<HTMLElement>('#app [title]');
+  if (titled?.title) return { key: `t:${titled.title}`, html: esc(titled.title) };
+  return null;
+}
+
+document.addEventListener('click', e => {
+  const was = tipKey;
+  closeTip();
+  const tip = e.target instanceof Element ? tipFor(e.target) : null;
+  if (!tip || was === tip.key) return; // 同じ場所をもう一度触ったら閉じるだけ
+  tipEl = document.createElement('div');
+  // 触った場所を隠さないよう，画面の上半分を触ったら下に，下半分なら上に出す
+  tipEl.className = `tip ${e.clientY < window.innerHeight / 2 ? 'low' : 'high'}`;
+  tipEl.innerHTML = tip.html;
+  document.body.appendChild(tipEl);
+  tipKey = tip.key;
+}, true);
+
 function render() {
   if (!s) notifyTurn(false);
   if (net && !s) return lobby();
@@ -493,26 +576,27 @@ function render() {
   const mine = st.current === me && st.phase === 'play';
   const human = me >= 0 ? st.players[me] : null;
   notifyTurn(mine);
+  const acting = mine && st.turn !== 'resolve'; // 引く・止める・向き選び：スマホでは操作を画面の下に固定する
   app.innerHTML = `
   <header><b class="logo sm">ミニマリスト <span>オーバーレイ版</span></b> <span class="round" title="全員が1回ずつ手番をすると1周">${st.round}周目</span>
     ${net ? `<span class="muted">部屋 ${esc(net.code)}</span>` : ''}
     <button id="sound" title="自分の番の合図音">${soundOn() ? '🔔 音あり' : '🔕 音なし'}</button>
     <button id="quit">${net ? '部屋を出る' : 'やめる'}</button></header>
   ${turnBanner()}
-  ${st.log.length > 1 ? `<div class="lastlog">直前：${esc(st.log[st.log.length - 1])}</div>` : ''}
-  <div class="seatsbar">${st.players.map((q, i) => `<div class="seat ${i === st.current && st.phase === 'play' ? 'now' : ''} ${i === me ? 'you' : ''}">
+  ${st.log.length > 1 ? `<div class="lastlog" title="${esc(st.log[st.log.length - 1])}">直前：${esc(st.log[st.log.length - 1])}</div>` : ''}
+  <div class="seatsbar">${st.players.map((q, i) => `<div class="seat ${i === st.current && st.phase === 'play' ? 'now' : ''} ${i === me ? 'you' : ''}" data-seat="${i}">
       <span class="dot p${i}"></span><b>${esc(q.name)}</b>${i === me ? '<em>あなた</em>' : ''}${q.finished ? ' ✓' : ''}${st.winners.includes(i) ? ' 🏆' : ''}
-      <small class="tn">${st.phase === 'over' ? `${st.round}回手番` : i === st.current ? `${st.round}回目の手番中` : `手番${st.round - 1 + (i < st.current ? 1 : 0)}回済`}</small>
-      <small>持ち物${ownedTiles(q).length}・排除${q.removed}${st.rules.chips ? `・決心<span class="cg">${'◆'.repeat(q.chips ?? 0) || '0'}</span>` : ''}${q.perms.length ? `・★${q.perms.map(k => TILES[k].name).join('・')}` : ''}</small></div>`).join('')}</div>
+      <small class="tn">${turnsText(st, i)}</small>
+      <small>${wn('持ち物', '持')}${ownedTiles(q).length}・${wn('排除', '除')}${q.removed}${st.rules.chips ? `・${wn('決心', '')}<span class="cg">${'◆'.repeat(q.chips ?? 0) || `${wn('0', '◆0')}`}</span>` : ''}${q.perms.length ? `・★${wn(q.perms.map(k => TILES[k].name).join('・'), String(q.perms.length))}` : ''}</small></div>`).join('')}</div>
   ${goalsHTML(st)}
-  <main class="game ${mine ? 'myturn' : ''}">
+  <main class="game ${mine ? 'myturn' : ''} ${acting ? 'acting' : ''}" style="--chrome:${chromePx(st)}px">
     <section class="left">
       <div class="who"><span class="dot p${st.current}"></span>${st.phase === 'over' ? '最後の盤' : mine ? 'あなたの盤' : `${esc(p.name)}の盤`}　<span class="bagline">袋 <b>${p.bag.length}</b>　捨て山 <b>${p.discard.length}</b>　置いた <b>${p.placed.length}</b></span></div>
       ${boardHTML(p, mine)}
       ${st.phase === 'play' ? hereHTML(p) : ''}
     </section>
     <section class="right">
-      <div class="panel ${mine ? 'mine' : ''}">${controlsHTML()}</div>
+      <div class="panel ${mine ? 'mine' : ''} ${acting ? 'act' : ''}">${acting ? hereHTML(p) : ''}${controlsHTML()}</div>
       ${human ? `<h3>あなたの袋 <small>${human.bag.length}枚（引く順番はわからない）</small></h3><div class="chips">${chipsHTML(human.bag)}</div>
         <h3>あなたの捨て山 <small>${human.discard.length}枚</small></h3><div class="chips">${chipsHTML(human.discard)}</div>
         ${human.perms.length ? `<h3>あなたのお気に入り</h3><div class="grid">${human.perms.map(k => infoHTML(k)).join('')}</div>` : ''}` : ''}
@@ -528,6 +612,7 @@ function render() {
   app.querySelector<HTMLButtonElement>('#quit')!.onclick = () => { if (s?.phase === 'over' || confirm(net ? '部屋を出ますか？（あとで同じ URL から戻れます）' : 'ゲームをやめますか？')) { leaveOnline(); s = null; render(); } };
   app.querySelector<HTMLButtonElement>('#sound')!.onclick = () => { store.set('sound', soundOn() ? 'off' : 'on'); render(); };
   bindControls();
+  autoScroll(st, mine);
   if (!net && st.phase === 'play' && cur().isBot) {
     clearTimeout(timer);
     timer = window.setTimeout(botStep, st.turn === 'resolve' ? 900 : 550);
@@ -554,16 +639,16 @@ function controlsHTML(): string {
     case 'move': {
       const can = canDraw(p, st.rules);
       const must = !p.placed.length && can;
-      if (p.hesHold) return `<p><b>ためらい</b>で止まるところです．決心チップ <b>${'◆'.repeat(p.chips)}</b> を1枚払えば，無視して引き続けられます${st.rules.hesChip && p.placed.length === 1 ? '（1枚目のためらいなので，このまま止まれば◆を1枚もらえます）' : ''}</p>
-        <div class="btns"><button id="draw" class="primary big">◆1枚で引き続ける<small>袋 ${p.bag.length}${p.bag.length ? '' : '（捨て山を戻す）'}</small></button></div>
-        <div class="stopzone"><button id="stop" class="big stopbtn">ここで止まる<small>${fxWord(here)}</small></button></div>`;
-      return `<p>${must ? '少なくとも1枚引きます' : `引くと今いるマスにタイルを置いて出ます．止めると<b>${fxWord(here)}</b>`}</p>
-        <div class="btns"><button id="draw" class="primary big" ${can ? '' : 'disabled'}>タイルを引く<small>袋 ${p.bag.length}${p.bag.length ? '' : can ? '（捨て山を戻す）' : ''}</small></button></div>
-        <div class="stopzone"><span class="muted">引かずに手番を切り上げる場合：</span><button id="stop" class="big stopbtn" ${must ? 'disabled' : ''}>ここで止める<small>${fxWord(here)}</small></button></div>`;
+      if (p.hesHold) return `<p class="msg"><b>ためらい</b>で止まるところです．決心チップ <b>${'◆'.repeat(p.chips)}</b> を1枚払えば，無視して引き続けられます${st.rules.hesChip && p.placed.length === 1 ? '（1枚目のためらいなので，このまま止まれば◆を1枚もらえます）' : ''}</p>
+        <div class="actrow"><div class="btns"><button id="draw" class="primary big">◆1枚で引き続ける<small>袋 ${p.bag.length}${p.bag.length ? '' : '（捨て山を戻す）'}</small></button></div>
+        <div class="stopzone"><button id="stop" class="big stopbtn">ここで止まる<small>${fxWord(here)}</small></button></div></div>`;
+      return `<p class="msg hint">${must ? '少なくとも1枚引きます' : `引くと今いるマスにタイルを置いて出ます．止めると<b>${fxWord(here)}</b>`}</p>
+        <div class="actrow"><div class="btns"><button id="draw" class="primary big" ${can ? '' : 'disabled'}>タイルを引く<small>袋 ${p.bag.length}${p.bag.length ? '' : can ? '（捨て山を戻す）' : ''}</small></button></div>
+        <div class="stopzone"><span class="muted">引かずに手番を切り上げる場合：</span><button id="stop" class="big stopbtn" ${must ? 'disabled' : ''}>ここで止める<small>${fxWord(here)}</small></button></div></div>`;
     }
     case 'branch': {
       const tile = p.placed[p.placed.length - 1];
-      return `<p><b>${TILES[tile.kind].name}</b>を置きました．どちらへ出ますか（盤の光っているマスでも選べます）</p>
+      return `<p class="msg hint"><b>${TILES[tile.kind].name}</b>を置きました．どちらへ出ますか（盤の光っているマスでも選べます）</p>
         ${dpadHTML(dirsOf(tile.kind, env), d => canMove(env, p.pos, d) ? fxWord(hereFxAt(p, step(p.pos, d))) : '出られない（ここに残る）')}`;
     }
     case 'resolve': {

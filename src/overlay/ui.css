@@ -228,3 +228,73 @@ body.myturn::before { content: ''; position: fixed; inset: 0; pointer-events: no
 
 .chipline { font-size: 12px; color: var(--muted); } .chipline b { color: var(--gold); letter-spacing: .1em; }
 .rolled { align-items: center; opacity: .9; } .rolled .hit { font-weight: 800; color: #2a1f05; background: var(--gold); border-radius: 50%; width: 54px; height: 54px; display: flex; align-items: center; justify-content: center; font-size: 12px; box-shadow: 0 2px 0 #a8791c; }
+
+/* ---- タップで出る説明（タイル・目標・席・印のあるところ） ---- */
+.on-narrow { display: none; }
+.tile[data-k], [data-goal], [data-seat], #app :not(button)[title] { cursor: pointer; } /* iOS は cursor:pointer が無い要素のタップを拾わない */
+label.ck .tile { cursor: inherit; }
+.tip { position: fixed; left: 50%; transform: translateX(-50%); z-index: 40; width: min(440px, calc(100vw - 16px)); max-height: 46vh; overflow: auto; padding: 10px 12px; font-size: 13px;
+  background: #2b3346; border: 1px solid var(--gold); border-radius: 12px; box-shadow: 0 12px 40px #000d; animation: tipin .12s ease-out; }
+.tip.low { bottom: calc(12px + env(safe-area-inset-bottom)); } .tip.high { top: 44px; }
+@keyframes tipin { from { opacity: 0; } }
+.tip .info { border: 0; background: none; padding: 0; min-height: 0; } .tip .th { margin-bottom: 4px; } .tip .tl { margin-top: 6px; font-size: 12px; } .tip .chips { margin-top: 6px; gap: 5px; } .tip .tile.chip { --s: 46px; }
+.panel .herebox { display: none; }
+
+/* ---- スマホ（幅600px以下）：盤と操作を1画面に収める．上をつめ，盤を幅いっぱいにし，引く・止める・向き選びは画面の下に固定 ---- */
+@media (max-width: 600px) {
+  .on-wide { display: none; } .on-narrow { display: inline; }
+  header { flex-wrap: nowrap; padding: 4px 10px; gap: 8px; }
+  header .round { display: none; }
+  header .logo { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  header .muted { font-size: 11px; white-space: nowrap; }
+  header button { padding: 3px 9px; white-space: nowrap; flex: none; }
+  .banner, .banner.mine { font-size: 15px; padding: 5px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .02em; }
+  .banner small { margin-left: 6px; font-size: 11px; }
+  .lastlog { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 10px; font-size: 11px; }
+  .seatsbar { padding: 6px 6px 0; gap: 4px; }
+  .seat { flex: 1 1 22%; min-width: 0; padding: 3px 7px; font-size: 12px; line-height: 1.35; white-space: nowrap; overflow: hidden; }
+  .seat .tn, .seat em { display: none; }
+  .seat.you b { text-decoration: underline; text-decoration-color: var(--gold); text-underline-offset: 3px; }
+  .seat small { font-size: 10px; overflow: hidden; text-overflow: ellipsis; }
+  .goalsbar { padding: 5px 6px 0; gap: 4px; flex-wrap: nowrap; }
+  .goalsbar .gl { font-size: 11px; flex: none; } .goalsbar .gl small { display: none; }
+  .goal { flex: 1 1 0; min-width: 0; padding: 2px 6px; flex-direction: row; align-items: center; gap: 4px; font-size: 11px; white-space: nowrap; overflow: hidden; }
+  .goal b { overflow: hidden; text-overflow: ellipsis; } .goal small, .goal .gw:empty { display: none; } .goal .gw { flex: none; min-height: 0; } .goal .gw .dot { width: 7px; height: 7px; margin-right: 2px; }
+  .game { padding: 6px 6px 40px; gap: 10px; }
+  .game.acting { padding-bottom: 150px; }
+  .who { margin: 0 2px 3px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* 盤：画面の高さから上下の部品（--chrome）を引いた残りに，行の数だけマスが入る幅まで */
+  .board { grid-template-columns: 8px repeat(7, minmax(0, 1fr)); gap: 2px; padding: 5px; border-radius: 12px; margin: 0 auto; container-type: inline-size;
+    max-width: max(250px, calc((100vh - var(--chrome, 290px) - 26px - var(--rows, 8) * 2px) * 7 / var(--rows, 8) + 32px));
+    max-width: max(250px, calc((100dvh - var(--chrome, 290px) - 26px - var(--rows, 8) * 2px) * 7 / var(--rows, 8) + 32px)); }
+  .rowh { font-size: 0; border-radius: 3px; } .rowh.buy { background: var(--buy); opacity: .7; } .rowh.remove { background: var(--rm); opacity: .7; }
+  .colh { font-size: 10px; padding: 1px 0; white-space: nowrap; }
+  .cell { border-radius: 7px; }
+  .cell .pf { font-size: 5cqw; } .cell .pf.st { font-size: 2.4cqw; } .cell .pf.sp { font-size: 4.8cqw; }
+  /* 盤の上のタイルは，置いた順・矢印・効果だけ（名前や四隅の印はタップで出る説明に） */
+  .cell .tile .nm, .cell .tile .c-w, .cell .tile .c-calm, .cell .tile .c-carry, .cell .tile .c-once { display: none; }
+  .cell .tile { font-size: 3.7cqw; border-radius: 6px; } .cell .tile .fx { font-size: 1.5em; }
+  .cell .tile .seq { font-size: .7em; left: 1px; top: 1px; } .cell .tile .stk { font-size: .68em; right: 1px; top: 1px; }
+  .cell .tile .ar { border-width: .28em; } .cell .tile .ar.U { margin-left: -.28em; border-bottom-width: .34em; } .cell .tile .ar.D { margin-left: -.28em; border-top-width: .34em; }
+  .cell .tile .ar.L { margin-top: -.28em; border-right-width: .34em; } .cell .tile .ar.R { margin-top: -.28em; border-left-width: .34em; }
+  .herebadge { display: none; }
+  .cell.here::after { inset: -3px; border-radius: 9px; }
+  .herebox { margin-top: 8px; padding: 6px 10px; gap: 8px; } .herebox .hv { font-size: 18px; }
+  /* 操作バー */
+  .game.acting .left > .herebox { display: none; }
+  .panel.act { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; margin: 0; border-radius: 0; border: 0; border-top: 2px solid var(--gold); box-shadow: 0 -8px 24px -8px #000c;
+    padding: 6px 10px calc(8px + env(safe-area-inset-bottom)); background: #0d1016f2; backdrop-filter: blur(8px); }
+  .panel.act .herebox { display: flex; margin: 0 0 6px; padding: 0 0 0 8px; border: 0; border-left: 4px solid var(--muted); border-radius: 0; background: none; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
+  .panel.act .herebox.buy { border-left-color: var(--buy); } .panel.act .herebox.remove { border-left-color: var(--rm); }
+  .panel.act .herebox.gacha { border-left-color: var(--gold); } .panel.act .herebox.lucky { border-left-color: #b48ae0; }
+  .panel.act .herebox .hl { flex: none; } .panel.act .herebox .hv { flex: none; } .panel.act .herebox .hs { font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+  .panel.act .msg { font-size: 12px; margin: 0 0 6px; line-height: 1.4; } .panel.act .msg.hint { display: none; }
+  .panel.act .actrow { display: flex; flex-direction: row-reverse; gap: 8px; align-items: stretch; }
+  .panel.act .btns { flex: 1 1 auto; margin-left: 24px; } .panel.act .btns button { width: 100%; min-width: 0; padding: 7px 10px; }
+  .panel.act .stopzone { flex: 0 0 104px; margin: 0; padding: 0; border: 0; display: flex; } .panel.act .stopzone .muted, .panel.act .stopbtn small { display: none; }
+  .panel.act .stopbtn { width: 100%; min-width: 0; font-size: 13px; opacity: .9; }
+  .panel.act .dpad { display: flex; gap: 8px; margin: 0; padding: 0; border: 0; background: none; }
+  .panel.act .dirbtn { flex: 1 1 0; min-width: 0; padding: 5px 4px; } .panel.act .dirbtn b { font-size: 22px; } .panel.act .dirbtn small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .panel.act .dirbtn[data-dir="L"] { order: 1; } .panel.act .dirbtn[data-dir="U"] { order: 2; } .panel.act .dirbtn[data-dir="D"] { order: 3; } .panel.act .dirbtn[data-dir="R"] { order: 4; }
+  .tip.low { bottom: calc(8px + env(safe-area-inset-bottom)); } .tip.high { top: 40px; }
+}
