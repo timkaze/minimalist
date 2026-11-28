@@ -1,0 +1,11 @@
+== v08b: OV_TILES={"BIGDAY":{"cost":6},"DOWN":{"heavy":1}} RULES={"chipStart":"none","goalChips":"one"} SET=all-KAKEIBO
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp/training/overlay-runs/fit_exp_v08b
+[1] データ 139015行（作成 225秒，終わらなかった人 23.5%）学習 2秒  検証 CE 1.730  手番数の誤差 7.21（平均で当てた場合 14.84）
+[2] データ 287281行（作成 308秒，終わらなかった人 25.1%）学習 3秒  検証 CE 1.725  手番数の誤差 6.59（平均で当てた場合 14.76）
+[3] データ 404269行（作成 273秒，終わらなかった人 10.1%）学習 4秒  検証 CE 1.772  手番数の誤差 5.93（平均で当てた場合 13.95）
+[4] データ 509042行（作成 244秒，終わらなかった人 6.1%）学習 5秒  検証 CE 1.766  手番数の誤差 5.36（平均で当てた場合 13.25）
+保存 /home/tomida/git/mo-exp/training/overlay-runs/exp_v08b/value_last.json（計 1063秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp/training/overlay-runs/fit_exp_v08b
+[refit] データ 509042行  検証 CE 1.763  手番数の誤差 5.31（平均で当てた場合 13.25）
+保存 /home/tomida/git/mo-exp/training/overlay-runs/exp_v08b/value.json
+== done v08b
