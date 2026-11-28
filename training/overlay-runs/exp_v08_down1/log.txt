@@ -1,0 +1,11 @@
+== v08_down1: OV_TILES={"DOWN":{"heavy":1}} RULES={} SET=all
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp/training/overlay-runs/fit_exp_v08_down1
+[1] データ 129493行（作成 212秒，終わらなかった人 22.4%）学習 2秒  検証 CE 1.654  手番数の誤差 6.91（平均で当てた場合 15.29）
+[2] データ 267304行（作成 328秒，終わらなかった人 22.5%）学習 3秒  検証 CE 1.689  手番数の誤差 6.07（平均で当てた場合 14.98）
+[3] データ 374545行（作成 275秒，終わらなかった人 8.5%）学習 3秒  検証 CE 1.728  手番数の誤差 5.58（平均で当てた場合 14.09）
+[4] データ 470520行（作成 251秒，終わらなかった人 5.6%）学習 4秒  検証 CE 1.716  手番数の誤差 5.08（平均で当てた場合 13.34）
+保存 /home/tomida/git/mo-exp/training/overlay-runs/exp_v08_down1/value_last.json（計 1078秒）
+特徴量 114，装置 cuda，出力 /home/tomida/git/mo-exp/training/overlay-runs/fit_exp_v08_down1
+[refit] データ 470520行  検証 CE 1.709  手番数の誤差 4.95（平均で当てた場合 13.34）
+保存 /home/tomida/git/mo-exp/training/overlay-runs/exp_v08_down1/value.json
+== done v08_down1

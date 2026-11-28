@@ -108,9 +108,9 @@ export interface Rules {
   /** 目標に「理性の果て」を入れる（v0.8 で外した） */
   goalCalm: boolean;
 }
-export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 3, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: true, goals: 'bonus', chipGain: 'goal', chipStart: 'late', goalChips: 'tiered', favCap: 0, dropChips: false, favStock4: 1, favFrom: 1, favGate: 'display', favFlush: 1, chipUse: 'hes', hesChip: true, oneShot: false, downStock: 'players', bigday: 'minus1', goalCalm: false };
+export const DEFAULT_RULES: Rules = { hes: 'first', hesCount: 3, traces: false, board: 'gentle', cols: 'v06', needs: true, lastCard: false, refill: true, midBuy: true, weights: 'heavy', junk: 'right', special: true, chips: true, favBoard: false, bigBag: false, carry: true, favOne: true, goals: 'bonus', chipGain: 'goal', chipStart: 'none', goalChips: 'one', favCap: 0, dropChips: false, favStock4: 1, favFrom: 1, favGate: 'display', favFlush: 1, chipUse: 'hes', hesChip: true, oneShot: false, downStock: 'players', bigday: 'minus1', goalCalm: false };
 /** v0.7 の既定（比べるとき用） */
-export const V07_RULES: Partial<Rules> = { goals: 'need1', chipStart: 'one', chipUse: 'weight', hesChip: false, oneShot: true, downStock: 'unlimited', bigday: 'all', goalCalm: true };
+export const V07_RULES: Partial<Rules> = { goals: 'need1', chipStart: 'one', goalChips: 'tiered', chipUse: 'weight', hesChip: false, oneShot: true, downStock: 'unlimited', bigday: 'all', goalCalm: true };
 
 /** 外から来たルールを整える（不正な値は既定に） */
 export function normRules(r: Partial<Rules> | undefined | null): Rules {

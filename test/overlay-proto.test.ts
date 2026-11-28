@@ -88,18 +88,20 @@ describe('オーバーレイ版の試作タイル', () => {
 
 describe('理性のお気に入り（試作）とお気に入りの在庫', () => {
   it('理性の列でしか取得できない', () => {
-    const s = game({}, marketFromChoice('all'));
+    const s = game({}, marketFromChoice('v07'));
     stack(s, 'RUSH', 'UP2', 'UP2'); // (1,2)：額 3+1 = 4，衝動1
     for (let i = 0; i < 3; i++) draw(s);
     expect(here(s)).toEqual({ kind: 'buy', amount: 4 });
     stop(s);
     expect(() => applyOverlay(s, 0, { type: 'resolve', buy: ['KAKEIBO'], remove: [] })).toThrow(/理性1以上/);
-    const t = game({}, marketFromChoice('all'));
+    const t = game({}, marketFromChoice('v07'));
     stack(t, 'DOUBT', 'TREAT'); // 理性1の列でご褒美（額4）を置いてその上で止まる
     draw(t); draw(t); stop(t);
     applyOverlay(t, 0, { type: 'resolve', buy: ['KAKEIBO'], remove: [] });
     expect(t.players[0].perms).toEqual(['KAKEIBO']);
-    expect(marketFromChoice('all')).toContain('YUTORI'); // v0.7 から「すべて」に理性のお気に入り3種が入る
+    expect(marketFromChoice('all')).toContain('YUTORI'); // v0.7 から「すべて」に理性のお気に入りが入る（v0.8 で家計簿は外した）
+    expect(marketFromChoice('all')).not.toContain('KAKEIBO');
+    expect(marketFromChoice('v07')).toContain('KAKEIBO');
     expect(marketFromChoice('calm')).not.toContain('KAKEIBO');
   });
 
@@ -253,15 +255,17 @@ describe('理性のお気に入り（試作）とお気に入りの在庫', () =
 });
 
 describe('目標', () => {
-  it('今の既定（v0.8）：ためらい3枚・目標はごほうびだけ・チップは目標でだけ（難しさ別）・はじめのチップは後半の席だけ1枚・お気に入りは2枚並べ', () => {
+  it('今の既定（v0.8）：ためらい3枚・目標はごほうびだけ（どれも1枚）・はじめのチップなし・お気に入りは2枚並べ', () => {
     const s = newOverlayGame([{ name: 'A' }, { name: 'B' }], 1);
     expect(s.goals!.length).toBe(3);
     expect(s.players[0].bag.filter(t => t.kind === 'HES').length).toBe(3);
-    expect(s.players.map(p => p.chips)).toEqual([0, 1]);
-    expect(s.rules).toMatchObject({ goals: 'bonus', chipGain: 'goal', goalChips: 'tiered', favGate: 'display', favFlush: 1, chipStart: 'late', chipUse: 'hes', hesChip: true, oneShot: false, downStock: 'players', bigday: 'minus1' });
+    expect(s.players.map(p => p.chips)).toEqual([0, 0]);
+    expect(s.rules).toMatchObject({ goals: 'bonus', chipGain: 'goal', goalChips: 'one', favGate: 'display', favFlush: 1, chipStart: 'none', chipUse: 'hes', hesChip: true, oneShot: false, downStock: 'players', bigday: 'minus1' });
     expect(s.goals).not.toContain('CALM3');
     expect(s.market.DOWN).toBe(2);
     expect(s.market.LIGHT).toBeUndefined();
+    expect(s.market.KAKEIBO).toBeUndefined();
+    expect(TILES.BIGDAY.cost).toBe(6);
   });
 
   it('3枚めくられ，止まり方が条件を満たすと達成して決心チップをもらう', () => {
@@ -522,11 +526,12 @@ describe('お気に入りの上限・手放すと決心チップ', () => {
 describe('v0.8 のルール', () => {
   const g8 = (rules: Partial<Rules> = {}, n = 2) => newOverlayGame(Array.from({ length: n }, (_, i) => ({ name: 'P' + i })), 1, { rules: { goals: 'off', ...rules } });
   it('はじめの決心チップ late：後半の席だけ1枚', () => {
-    expect(g8({}, 4).players.map(p => p.chips)).toEqual([0, 0, 1, 1]);
-    expect(g8({}, 3).players.map(p => p.chips)).toEqual([0, 0, 1]);
-    expect(g8({}, 2).players.map(p => p.chips)).toEqual([0, 1]);
+    expect(g8({ chipStart: 'late' }, 4).players.map(p => p.chips)).toEqual([0, 0, 1, 1]);
+    expect(g8({ chipStart: 'late' }, 3).players.map(p => p.chips)).toEqual([0, 0, 1]);
+    expect(g8({ chipStart: 'late' }, 2).players.map(p => p.chips)).toEqual([0, 1]);
+    expect(g8({}, 4).players.map(p => p.chips)).toEqual([0, 0, 0, 0]);
   });
-  it('片付けたいは人数ぶんで売り切れる．重さ2', () => {
+  it('片付けたいは人数ぶんで売り切れる', () => {
     const s = g8();
     expect(s.market.DOWN).toBe(2);
     stack(s, 'WANT', 'WANT'); // (0,2)：額3
