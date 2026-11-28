@@ -238,7 +238,17 @@ label.ck .tile { cursor: inherit; }
 .tip.low { bottom: calc(12px + env(safe-area-inset-bottom)); } .tip.high { top: 44px; }
 @keyframes tipin { from { opacity: 0; } }
 .tip .info { border: 0; background: none; padding: 0; min-height: 0; } .tip .th { margin-bottom: 4px; } .tip .tl { margin-top: 6px; font-size: 12px; } .tip .chips { margin-top: 6px; gap: 5px; } .tip .tile.chip { --s: 46px; }
-.panel .herebox { display: none; }
+.panel .sheethead { display: none; }
+/* 畳める見出し（スマホだけ畳める．広い画面ではただの見出し） */
+.sec > summary { list-style: none; pointer-events: none; } .sec > summary::-webkit-details-marker { display: none; }
+/* 福袋で出たタイルの知らせ */
+.got { position: fixed; left: 50%; top: 44px; transform: translateX(-50%); z-index: 45; width: min(380px, calc(100vw - 24px)); padding: 8px 12px; border-radius: 14px; cursor: pointer;
+  background: linear-gradient(135deg, #5a4a14, #2c2a1e); border: 1px solid var(--gold); box-shadow: 0 16px 50px #000d, 0 0 40px -8px var(--gold); animation: gotin .35s cubic-bezier(.2, 1.4, .4, 1); }
+.got.mine { top: 16%; padding: 12px 14px; border-width: 2px; }
+@keyframes gotin { from { opacity: 0; transform: translateX(-50%) scale(.8); } }
+.got .gh { font-weight: 800; color: var(--gold); font-size: 14px; margin-bottom: 6px; } .got.mine .gh { font-size: 16px; } .got .gh:last-child { margin: 0; }
+.got .gf { font-size: 12px; margin-top: 6px; } .got .gf:empty { display: none; }
+.got .info { background: #0006; border-color: #b8922e; } .got.mine .info .tile { --s: 84px; }
 
 /* ---- スマホ（幅600px以下）：盤と操作を1画面に収める．上をつめ，盤を幅いっぱいにし，引く・止める・向き選びは画面の下に固定 ---- */
 @media (max-width: 600px) {
@@ -297,4 +307,40 @@ label.ck .tile { cursor: inherit; }
   .panel.act .dirbtn { flex: 1 1 0; min-width: 0; padding: 5px 4px; } .panel.act .dirbtn b { font-size: 22px; } .panel.act .dirbtn small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .panel.act .dirbtn[data-dir="L"] { order: 1; } .panel.act .dirbtn[data-dir="U"] { order: 2; } .panel.act .dirbtn[data-dir="D"] { order: 3; } .panel.act .dirbtn[data-dir="R"] { order: 4; }
   .tip.low { bottom: calc(8px + env(safe-area-inset-bottom)); } .tip.high { top: 40px; }
+  .panel.act .sheethead { display: block; }
+  /* 止まったあとの取得・排除：下から出るパネル．中だけがスクロールし，「手番を終える」は下に貼り付く．「盤を見る」で畳める */
+  .game.sheeting .left > .herebox { display: none; }
+  .game.sheeting { padding-bottom: 64vh; }
+  .panel.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; margin: 0; border: 0; border-top: 2px solid var(--gold); border-radius: 14px 14px 0 0; box-shadow: 0 -10px 30px -8px #000d;
+    max-height: 60vh; max-height: 60dvh; overflow-y: auto; overscroll-behavior: contain; padding: 0 10px calc(8px + env(safe-area-inset-bottom)); background: #141821; }
+  .panel.sheet .sheethead { display: flex; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 3; margin: 0 -10px 6px; padding: 7px 10px 6px; background: #141821; border-bottom: 1px solid var(--line); }
+  .panel.sheet .herebox { display: flex; flex: 1 1 auto; min-width: 0; margin: 0; padding: 0 0 0 8px; border: 0; border-left: 4px solid var(--muted); border-radius: 0; background: none; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
+  .panel.sheet .herebox.buy { border-left-color: var(--buy); } .panel.sheet .herebox.remove { border-left-color: var(--rm); }
+  .panel.sheet .herebox.gacha { border-left-color: var(--gold); } .panel.sheet .herebox.lucky { border-left-color: #b48ae0; }
+  .panel.sheet .herebox .hl, .panel.sheet .herebox .hv { flex: none; } .panel.sheet .herebox .hs { font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+  #sheetToggle { flex: none; padding: 4px 9px; font-size: 12px; white-space: nowrap; }
+  .panel.sheet.min > :not(.sheethead) { display: none; } .panel.sheet.min .sheethead { margin-bottom: 0; border-bottom: 0; }
+  .panel.sheet p { margin: 2px 0 8px; font-size: 13px; }
+  .panel.sheet > #resolve { position: sticky; bottom: 0; z-index: 3; width: 100%; min-width: 0; margin-top: 8px; padding: 9px 12px; box-shadow: 0 2px 0 #a8791c, 0 0 0 8px #141821, 0 -14px 14px 4px #141821; }
+  .panel.sheet > #resolve:disabled { opacity: 1; filter: grayscale(.85) brightness(.55); }
+  .panel.sheet .pickable .tile { --s: 66px; }
+  /* 市場：1行1種類の詰めた並び（効果の文は取得中は出さない．タイルをタップすると出る） */
+  .market { grid-template-columns: minmax(0, 1fr); gap: 5px; }
+  .panel .market { max-height: none; overflow: visible; padding: 0; }
+  .market .info { padding: 5px 8px; min-height: 0; gap: 9px; border-radius: 9px; }
+  .market .info .tile { --s: 48px; }
+  .market .info .it { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center; }
+  .market .info .in { grid-column: 1; grid-row: 1; } .market .info .ib { grid-column: 1; grid-row: 2; margin: 0; }
+  .market .info .id { grid-column: 1 / -1; grid-row: 3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .market.buying .info .id { display: none; }
+  .market .info .stock { grid-column: 2; grid-row: 1 / 3; flex-direction: column; align-items: flex-end; gap: 3px; margin: 0; }
+  .pm { gap: 8px; } .pm button { padding: 5px 14px; font-size: 16px; line-height: 1.2; }
+  .flushbox { font-size: 12px; } .flushbox button { padding: 5px 10px; }
+  /* 畳める見出し */
+  .sec { border-top: 1px solid var(--line); } .sec:first-of-type { border-top: 0; }
+  .sec > summary { pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+  .sec > summary::before { content: '▸'; color: var(--muted); width: 1em; } .sec[open] > summary::before { content: '▾'; }
+  .sec > summary h3 { margin: 8px 0; } .sec[open] { padding-bottom: 10px; }
+  /* ゲーム終了：結果を盤より先に */
+  .game.over .left { order: 2; }
 }

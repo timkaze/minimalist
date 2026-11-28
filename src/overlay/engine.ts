@@ -381,6 +381,8 @@ export interface OState {
   rules: Rules;
   /** 福袋の残り（全員で共有） */
   gacha: OKind[];
+  /** 直前の福袋の結果（画面で知らせるため．at は記録の何行目か＝同じ知らせを2度出さない目印） */
+  lastGacha?: { who: number; kind: OKind | null; at: number };
   /** 入荷待ちのお気に入り（favGate restock．先頭から並ぶ） */
   favQueue?: { kind: OKind; n: number }[];
   /** この試合の目標（ルール goals が off でなければ3枚） */
@@ -687,7 +689,8 @@ function resolve(s: OState, p: OPlayer, a: { buy: OKind[]; remove: number[]; roo
       p.discard.push({ id: s.nextId++, kind: k });
       p.bought++;
       lucky = `福袋から「${TILES[k].name}」`;
-    } else lucky = '福袋は空だった';
+      s.lastGacha = { who: s.players.indexOf(p), kind: k, at: s.log.length + 1 };
+    } else { lucky = '福袋は空だった'; s.lastGacha = { who: s.players.indexOf(p), kind: null, at: s.log.length + 1 }; }
   }
 
   const parts = [`${p.name}：(${pos.x},${pos.y})で止まった`];

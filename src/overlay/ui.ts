@@ -208,17 +208,21 @@ function readRulesDraft(): Rules {
   return found ? normRules(raw as Partial<Rules>) : savedRules();
 }
 
+/** 開始画面の「こまかいルール」を開いているか（未操作なら，広い画面は開く・スマホは畳む） */
+let rulesOpen: boolean | null = null;
+
 function optionsHTML(): string {
   const r = savedRules();
   const set = store.get('set') ?? 'all';
   const custom = new Set((store.get('tiles') ?? MARKET.join(',')).split(','));
-  return `<div class="opts">
+  const changed = RULE_OPTS.filter(o => String(r[o.key]) !== String(DEFAULT_RULES[o.key])).length;
+  return `<details class="fold rulefold" ${rulesOpen ?? !isPhone() ? 'open' : ''}><summary>こまかいルール（<span id="ruleCount">${changed ? `変更中 ${changed}件` : '既定のまま'}</span>）</summary><div class="opts">
     ${RULE_OPTS.map(o => `<label><span>${o.label}${String(r[o.key]) !== String(DEFAULT_RULES[o.key]) ? ' <em>変更中</em>' : ''}</span>
       <select data-rule="${o.key}">${o.choices.map(([v, l]) => `<option value="${v}" ${String(r[o.key]) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`).join('')}
-    <label><span>市場のタイル</span><select id="set">${TILE_SETS.map(c => `<option value="${c.id}" ${c.id === set ? 'selected' : ''}>${c.label}</option>`).join('')}
+    </div><p><button id="resetRules">ルールを既定に戻す</button></p></details>
+    <div class="opts"><label><span>市場のタイル</span><select id="set">${TILE_SETS.map(c => `<option value="${c.id}" ${c.id === set ? 'selected' : ''}>${c.label}</option>`).join('')}
       <option value="custom" ${set === 'custom' ? 'selected' : ''}>自分で選ぶ</option></select></label>
     </div>
-    <p><button id="resetRules">ルールを既定に戻す</button></p>
     <div id="setInfo" class="setinfo"></div>
     <div id="custom" class="grid" ${set === 'custom' ? '' : 'hidden'}>${MARKET.map(k => `<label class="ck"><input type="checkbox" value="${k}" ${custom.has(k) || UNLIMITED_KINDS.includes(k) ? 'checked' : ''} ${UNLIMITED_KINDS.includes(k) ? 'disabled' : ''}>${infoHTML(k)}</label>`).join('')}</div>
     <details class="fold" id="startbag"><summary>初期の袋（全員同じ）</summary><div class="grid" id="startbagBody"></div></details>`;
@@ -237,7 +241,15 @@ function bindOptions() {
     app.querySelector<HTMLElement>('#startbagBody')!.innerHTML = startingBag(readRulesDraft().hesCount).map(([k, n]) => infoHTML(k, '', n)).join('');
   };
   setSel.onchange = () => { store.set('set', setSel.value); info(); };
-  app.querySelectorAll<HTMLSelectElement>('select[data-rule]').forEach(x => x.onchange = () => { store.set('rules6', JSON.stringify(readRulesDraft())); info(); });
+  app.querySelectorAll<HTMLSelectElement>('select[data-rule]').forEach(x => x.onchange = () => {
+    const r = readRulesDraft();
+    store.set('rules6', JSON.stringify(r));
+    const n = RULE_OPTS.filter(o => String(r[o.key]) !== String(DEFAULT_RULES[o.key])).length;
+    app.querySelector<HTMLElement>('#ruleCount')!.textContent = n ? `変更中 ${n}件` : '既定のまま';
+    info();
+  });
+  const fold = app.querySelector<HTMLDetailsElement>('.rulefold');
+  fold?.addEventListener('toggle', () => { rulesOpen = fold.open; });
   app.querySelectorAll<HTMLInputElement>('#custom input').forEach(x => x.onchange = () =>
     store.set('tiles', [...app.querySelectorAll<HTMLInputElement>('#custom input:checked')].map(y => y.value).join(',')));
   app.querySelector<HTMLButtonElement>('#resetRules')!.onclick = () => { store.set('rules6', JSON.stringify(DEFAULT_RULES)); render(); };
@@ -495,23 +507,45 @@ function chromePx(st: OState): number {
   return 34 + (st.log.length > 1 ? 21 : 0) + 6 + seatRows * 44 + (st.goals?.length ? 33 : 0) + 30 + 102;
 }
 
-/**
- * スマホ：場面が変わったときだけ画面を送る（同じ場面では1回．待っているあいだに市場などを見ていても動かさない）
- *   自分の番が来た・自分の番が終わった → 手番の帯が一番上（盤と操作バーが1画面に入る位置）
- *   止まった → 止まったマスの効果と取得・排除のパネル
- */
+/** スマホ：画面を自動で送るのは，自分の番が来たときだけ（手番の帯が一番上＝盤と操作バーが1画面に入る位置へ） */
 let scrollKey = '';
 function autoScroll(st: OState, mine: boolean) {
-  const key = mine ? `${st.round}-${st.current}-${st.turn === 'resolve' ? 'r' : 'm'}` : '';
+  const key = mine ? `${st.round}-${st.current}` : '';
   if (key === scrollKey) return;
   scrollKey = key;
-  if (!isPhone()) return;
-  const header = app.querySelector<HTMLElement>('header'), banner = app.querySelector<HTMLElement>('.banner');
-  const here = app.querySelector<HTMLElement>('.left > .herebox');
-  if (!header || !banner) return;
+  const header = app.querySelector<HTMLElement>('header');
   // 手番の帯は画面の上に貼り付くので，帯の位置でなくヘッダーの高さから求める
-  const top = mine && st.turn === 'resolve' && here ? here.getBoundingClientRect().top + window.scrollY - banner.offsetHeight - 6 : header.offsetHeight;
-  window.scrollTo({ top, behavior: 'smooth' });
+  if (mine && isPhone() && header) window.scrollTo({ top: header.offsetHeight, behavior: 'smooth' });
+}
+
+/** 止まったあとのパネル（スマホ）を畳んで盤を見ているか．場面が変わったら開き直す */
+let sheetMin = false;
+let lastScene = '';
+/** スマホで畳める見出し（袋・捨て山・市場・記録）．広い画面ではいつも開いている */
+const secOpen: Record<string, boolean> = {};
+const secIsOpen = (id: string) => !isPhone() || (secOpen[id] ?? (id !== 'market' && id !== 'log'));
+
+// ---- 福袋で何が出たかの知らせ ----
+
+let gachaSeen = -1;
+function announceGacha(st: OState) {
+  const g = st.lastGacha;
+  const first = gachaSeen < 0; // 画面を開いた時点で済んでいた分は知らせない
+  if (!g) { gachaSeen = 0; return; }
+  if (g.at === gachaSeen) return;
+  gachaSeen = g.at;
+  if (first) return;
+  document.querySelector('.got')?.remove();
+  const mineGot = g.who === me;
+  const el = document.createElement('div');
+  el.className = `got ${mineGot ? 'mine' : ''}`;
+  const who = `<span class="dot p${g.who}"></span>${esc(st.players[g.who].name)}`;
+  el.innerHTML = g.kind
+    ? `<div class="gh">${mineGot ? '福袋から出たのは…' : `${who} の福袋`}</div>${infoHTML(g.kind)}<div class="gf">${mineGot ? '捨て山に入りました　<span class="muted">タップで閉じる</span>' : ''}</div>`
+    : `<div class="gh">${mineGot ? '福袋は空でした' : `${who}：福袋は空だった`}</div>`;
+  el.onclick = () => el.remove();
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), mineGot ? 6000 : 3200);
 }
 
 // ---- タップで説明（スマホではマウスを乗せる説明が出ないので） ----
@@ -539,7 +573,7 @@ function goalTipHTML(k: keyof typeof GOALS): string {
 
 /** タップされた場所の説明．選ぶ・押すための場所（ボタン，選べるタイル，選べるマス）は説明を出さない */
 function tipFor(target: Element): { key: string; html: string } | null {
-  if (target.closest('button, a, input, select, summary, label.ck, [data-dir], [data-rm], [data-rb], .tip')) return null;
+  if (target.closest('button, a, input, select, summary, label.ck, [data-dir], [data-rm], [data-rb], .tip, .got')) return null;
   const tile = target.closest<HTMLElement>('.tile[data-k]');
   if (tile) {
     const kind = tile.dataset.k as OKind;
@@ -568,7 +602,7 @@ document.addEventListener('click', e => {
 }, true);
 
 function render() {
-  if (!s) notifyTurn(false);
+  if (!s) { notifyTurn(false); gachaSeen = -1; }
   if (net && !s) return lobby();
   if (!s) return setup();
   const st = s;
@@ -577,6 +611,14 @@ function render() {
   const human = me >= 0 ? st.players[me] : null;
   notifyTurn(mine);
   const acting = mine && st.turn !== 'resolve'; // 引く・止める・向き選び：スマホでは操作を画面の下に固定する
+  const sheet = mine && st.turn === 'resolve'; // 止まったあとの取得・排除：スマホでは下から出るパネル
+  const scene = `${st.round}-${st.current}-${st.turn}-${st.phase}`;
+  if (scene !== lastScene) sheetMin = false;
+  // 描き直しても，同じ場面ならパネルや市場のスクロール位置を保つ（タイルを1枚選ぶたびに先頭へ戻らないように）
+  const KEEP = ['.panel', '.panel .market'];
+  const kept = scene === lastScene ? KEEP.map(q => app.querySelector(q)?.scrollTop ?? 0) : [];
+  lastScene = scene;
+  const sec = (id: string, title: string, body: string) => `<details class="sec" data-sec="${id}" ${secIsOpen(id) ? 'open' : ''}><summary><h3>${title}</h3></summary>${body}</details>`;
   app.innerHTML = `
   <header><b class="logo sm">ミニマリスト <span>オーバーレイ版</span></b> <span class="round" title="全員が1回ずつ手番をすると1周">${st.round}周目</span>
     ${net ? `<span class="muted">部屋 ${esc(net.code)}</span>` : ''}
@@ -589,22 +631,20 @@ function render() {
       <small class="tn">${turnsText(st, i)}</small>
       <small>${wn('持ち物', '持')}${ownedTiles(q).length}・${wn('排除', '除')}${q.removed}${st.rules.chips ? `・${wn('決心', '')}<span class="cg">${'◆'.repeat(q.chips ?? 0) || `${wn('0', '◆0')}`}</span>` : ''}${q.perms.length ? `・★${wn(q.perms.map(k => TILES[k].name).join('・'), String(q.perms.length))}` : ''}</small></div>`).join('')}</div>
   ${goalsHTML(st)}
-  <main class="game ${mine ? 'myturn' : ''} ${acting ? 'acting' : ''}" style="--chrome:${chromePx(st)}px">
+  <main class="game ${mine ? 'myturn' : ''} ${acting ? 'acting' : ''} ${sheet ? 'sheeting' : ''} ${st.phase === 'over' ? 'over' : ''}" style="--chrome:${chromePx(st)}px">
     <section class="left">
       <div class="who"><span class="dot p${st.current}"></span>${st.phase === 'over' ? '最後の盤' : mine ? 'あなたの盤' : `${esc(p.name)}の盤`}　<span class="bagline">袋 <b>${p.bag.length}</b>　捨て山 <b>${p.discard.length}</b>　置いた <b>${p.placed.length}</b></span></div>
       ${boardHTML(p, mine)}
       ${st.phase === 'play' ? hereHTML(p) : ''}
     </section>
     <section class="right">
-      <div class="panel ${mine ? 'mine' : ''} ${acting ? 'act' : ''}">${acting ? hereHTML(p) : ''}${controlsHTML()}</div>
-      ${human ? `<h3>あなたの袋 <small>${human.bag.length}枚（引く順番はわからない）</small></h3><div class="chips">${chipsHTML(human.bag)}</div>
-        <h3>あなたの捨て山 <small>${human.discard.length}枚</small></h3><div class="chips">${chipsHTML(human.discard)}</div>
-        ${human.perms.length ? `<h3>あなたのお気に入り</h3><div class="grid">${human.perms.map(k => infoHTML(k)).join('')}</div>` : ''}` : ''}
-      ${!mine && st.phase === 'play' ? `<h3>${esc(p.name)}の袋 <small>${p.bag.length}枚</small></h3><div class="chips">${chipsHTML(p.bag)}</div>` : ''}
-      <h3>市場</h3>
-      <div class="market">${marketHTML(false)}</div>
-      <h3>記録</h3>
-      <ol class="log">${st.log.slice(-14).reverse().map(l => `<li>${esc(l)}</li>`).join('')}</ol>
+      <div class="panel ${mine ? 'mine' : ''} ${acting ? 'act' : ''} ${sheet ? 'sheet' : ''} ${sheet && sheetMin ? 'min' : ''}">${mine ? `<div class="sheethead">${hereHTML(p)}${sheet ? `<button id="sheetToggle">${sheetMin ? '▲ 開く' : '▼ 盤を見る'}</button>` : ''}</div>` : ''}${controlsHTML()}</div>
+      ${human ? `${sec('bag', `あなたの袋 <small>${human.bag.length}枚（引く順番はわからない）</small>`, `<div class="chips">${chipsHTML(human.bag)}</div>`)}
+        ${sec('discard', `あなたの捨て山 <small>${human.discard.length}枚</small>`, `<div class="chips">${chipsHTML(human.discard)}</div>`)}
+        ${human.perms.length ? sec('favs', 'あなたのお気に入り', `<div class="grid">${human.perms.map(k => infoHTML(k)).join('')}</div>`) : ''}` : ''}
+      ${!mine && st.phase === 'play' ? sec('other', `${esc(p.name)}の袋 <small>${p.bag.length}枚</small>`, `<div class="chips">${chipsHTML(p.bag)}</div>`) : ''}
+      ${sec('market', '市場', `<div class="market">${marketHTML(false)}</div>`)}
+      ${sec('log', '記録', `<ol class="log">${st.log.slice(-14).reverse().map(l => `<li>${esc(l)}</li>`).join('')}</ol>`)}
       <details class="fold"><summary>ルールの要約と，この卓の設定</summary>
         <p class="muted">${RULE_OPTS.map(o => `${o.label}：${o.choices.find(c => c[0] === String(st.rules[o.key]))?.[1] ?? ''}`).join('<br>')}</p>${rulesHTML()}</details>
     </section>
@@ -612,7 +652,11 @@ function render() {
   app.querySelector<HTMLButtonElement>('#quit')!.onclick = () => { if (s?.phase === 'over' || confirm(net ? '部屋を出ますか？（あとで同じ URL から戻れます）' : 'ゲームをやめますか？')) { leaveOnline(); s = null; render(); } };
   app.querySelector<HTMLButtonElement>('#sound')!.onclick = () => { store.set('sound', soundOn() ? 'off' : 'on'); render(); };
   bindControls();
+  kept.forEach((y, i) => { const el = app.querySelector(KEEP[i]); if (el && y) el.scrollTop = y; });
+  app.querySelector<HTMLButtonElement>('#sheetToggle')?.addEventListener('click', () => { sheetMin = !sheetMin; render(); });
+  app.querySelectorAll<HTMLDetailsElement>('details.sec').forEach(d => d.addEventListener('toggle', () => { if (isPhone()) secOpen[d.dataset.sec!] = d.open; }));
   autoScroll(st, mine);
+  announceGacha(st);
   if (!net && st.phase === 'play' && cur().isBot) {
     clearTimeout(timer);
     timer = window.setTimeout(botStep, st.turn === 'resolve' ? 900 : 550);
